@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { NewWorkoutButton } from "@/components/new-workout-button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,11 +27,35 @@ function getExerciseSetCount(
   return exerciseRepSets.length + exerciseDurationSets.length;
 }
 
-export default async function WorkoutsPage() {
-  const workouts: Workout[] = await api.getWorkouts();
-  const exercises: Exercise[] = await api.getExercises();
-  const repSets: RepSet[] = await api.getRepSets();
-  const durationSets: DurationSet[] = await api.getDurationSets();
+export default function WorkoutsPage() {
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [repSets, setRepSets] = useState<RepSet[]>([]);
+  const [durationSets, setDurationSets] = useState<DurationSet[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const [workoutsData, exercisesData, repSetsData, durationSetsData] =
+          await Promise.all([
+            api.getWorkouts(),
+            api.getExercises(),
+            api.getRepSets(),
+            api.getDurationSets(),
+          ]);
+        setWorkouts(workoutsData);
+        setExercises(exercisesData);
+        setRepSets(repSetsData);
+        setDurationSets(durationSetsData);
+      } catch (error) {
+        console.error("Failed to load data:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, []);
 
   const plannedWorkouts = workouts
     .filter((w) => w.planned)
@@ -44,6 +71,14 @@ export default async function WorkoutsPage() {
         new Date(b.creation_date).getTime() -
         new Date(a.creation_date).getTime(),
     );
+
+  if (loading) {
+    return (
+      <div className="container mx-auto p-6">
+        <p>Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto p-6 space-y-4">

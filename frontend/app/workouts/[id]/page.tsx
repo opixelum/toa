@@ -1,6 +1,9 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { PlannedWorkoutActions } from "@/components/planned-workout-actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,28 +37,65 @@ const SET_TYPE_COLORS: Record<string, string> = {
     "bg-slate-100 border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200",
 };
 
-export default async function WorkoutDetailPage({
+export default function WorkoutDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
-  const workoutId = Number.parseInt(id, 10);
+  const router = useRouter();
+  const [workout, setWorkout] = useState<Workout | null>(null);
+  const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [workoutExercises, setWorkoutExercises] = useState<WorkoutExercise[]>([]);
+  const [repSets, setRepSets] = useState<RepSet[]>([]);
+  const [durationSets, setDurationSets] = useState<DurationSet[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const workout: Workout = await api.getWorkout(workoutId);
-  if (!workout) {
-    notFound();
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const { id } = await params;
+        const workoutId = Number.parseInt(id, 10);
+
+        const [workoutData, exercisesData, workoutExercisesData, repSetsData, durationSetsData] =
+          await Promise.all([
+            api.getWorkout(workoutId),
+            api.getExercises(),
+            api.getWorkoutExercises(workoutId),
+            api.getRepSets(),
+            api.getDurationSets(),
+          ]);
+
+        if (!workoutData) {
+          router.push("/workouts");
+          return;
+        }
+
+        setWorkout(workoutData);
+        setExercises(exercisesData);
+        setWorkoutExercises(workoutExercisesData);
+        setRepSets(repSetsData);
+        setDurationSets(durationSetsData);
+      } catch (error) {
+        console.error("Failed to load data:", error);
+        router.push("/workouts");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadData();
+  }, [params, router]);
+
+  if (loading || !workout) {
+    return (
+      <div className="container mx-auto p-6">
+        <p>Loading...</p>
+      </div>
+    );
   }
 
-  const exercises: Exercise[] = await api.getExercises();
-  const workoutExercises: WorkoutExercise[] =
-    await api.getWorkoutExercises(workoutId);
-  const repSets: RepSet[] = await api.getRepSets();
-  const durationSets: DurationSet[] = await api.getDurationSets();
-
-  const workoutRepSets = repSets.filter((set) => set.workout_id === workoutId);
+  const workoutRepSets = repSets.filter((set) => set.workout_id === workout.id);
   const workoutDurationSets = durationSets.filter(
-    (set) => set.workout_id === workoutId,
+    (set) => set.workout_id === workout.id,
   );
 
   const exerciseSets = new Map<number, (RepSet | DurationSet)[]>();
@@ -84,7 +124,7 @@ export default async function WorkoutDetailPage({
           </div>
           <div className="flex items-center gap-2">
             {workout.planned && <PlannedWorkoutActions workout={workout} />}
-            <Link href={`/workouts/${id}/active`}>
+            <Link href={`/workouts/${workout.id}/active`}>
               <Button>Start</Button>
             </Link>
           </div>

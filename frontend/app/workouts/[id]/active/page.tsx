@@ -468,7 +468,7 @@ export default function ActiveWorkoutPage({
   };
 
   const handleDragOverExercise = (
-    event: React.DragEvent<HTMLDivElement>,
+    event: React.DragEvent<HTMLElement>,
     targetGroupId: string,
   ) => {
     event.preventDefault();
