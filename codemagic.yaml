@@ -3,3 +3,12 @@ workflows:
         name: Toa Workflow
         max_build_duration: 120
         instance_type: mac_mini_m2
+        scripts:
+          - name: Build
+            script: | 
+              cd frontend
+              npm i
+              npx cap sync ios
+              cd ios/App
+              pod install
+              xcodebuild -workspace App.xcworkspace -scheme App -configuration Release -archivePath build/App.xcarchive archive
