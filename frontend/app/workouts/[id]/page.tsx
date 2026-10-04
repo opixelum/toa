@@ -19,6 +19,20 @@ import {
   type Workout,
   type WorkoutExercise,
 } from "@/lib/api";
+import { cn } from "@/lib/utils";
+
+const SET_TYPE_COLORS: Record<string, string> = {
+  WARMUP:
+    "bg-amber-100 border-amber-300 text-amber-900 dark:bg-amber-950/70 dark:border-amber-800 dark:text-amber-300",
+  FAILURE:
+    "bg-rose-100 border-rose-300 text-rose-900 dark:bg-rose-950/70 dark:border-rose-800 dark:text-rose-300",
+  DROPSET:
+    "bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-950/70 dark:border-blue-800 dark:text-blue-300",
+  SUPERSET:
+    "bg-purple-100 border-purple-300 text-purple-900 dark:bg-purple-950/70 dark:border-purple-800 dark:text-purple-300",
+  WORKSET:
+    "bg-slate-100 border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200",
+};
 
 export default async function WorkoutDetailPage({
   params,
@@ -85,7 +99,20 @@ export default async function WorkoutDetailPage({
                 timeStyle: "short",
               }).format(new Date(workout.creation_date))}
             </p>
+            {workout.rpe && (
+              <p>
+                <strong>RPE:</strong> {workout.rpe}
+              </p>
+            )}
             {workout.description && <p>{workout.description}</p>}
+            {workout.note && (
+              <div className="p-3 bg-muted/40 border rounded-lg text-sm text-foreground">
+                <span className="font-semibold text-muted-foreground mr-1.5">
+                  Post Workout Note:
+                </span>
+                {workout.note}
+              </div>
+            )}
           </div>
 
           <div className="space-y-6">
@@ -144,7 +171,17 @@ export default async function WorkoutDetailPage({
                           return (
                             <TableRow key={set.id}>
                               <TableCell>{index + 1}</TableCell>
-                              <TableCell>{set.type_}</TableCell>
+                              <TableCell>
+                                <span
+                                  className={cn(
+                                    "inline-block px-2 py-0.5 rounded text-xs font-semibold border",
+                                    SET_TYPE_COLORS[set.type_] ||
+                                      "bg-muted text-muted-foreground",
+                                  )}
+                                >
+                                  {set.type_}
+                                </span>
+                              </TableCell>
                               <TableCell>{set.weight ?? 0}</TableCell>
                               {isRepExercise && (
                                 <TableCell>

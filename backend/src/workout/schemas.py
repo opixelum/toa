@@ -123,6 +123,8 @@ class WorkoutBase(BaseModel):
     name: str = Field(..., max_length=255)
     planned: bool = True
     description: str | None = Field(default=None, max_length=1024)
+    note: str | None = Field(default=None, max_length=2048)
+    rpe: float | None = Field(default=None, ge=1.0, le=10.0)
 
 
 class WorkoutCreate(WorkoutBase):
@@ -134,6 +136,8 @@ class WorkoutUpdate(BaseModel):
     name: str | None = Field(default=None, max_length=255)
     planned: bool | None = None
     description: str | None = Field(default=None, max_length=1024)
+    note: str | None = Field(default=None, max_length=2048)
+    rpe: float | None = Field(default=None, ge=1.0, le=10.0)
     mesocycle_id: int | None = None
 
 

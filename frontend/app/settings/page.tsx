@@ -1,11 +1,12 @@
 "use client";
 
-import { Check } from "lucide-react";
+import { Check, LogOut } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
 import { api, type User } from "@/lib/api";
 
 export default function SettingsPage() {
@@ -16,6 +17,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [updated, setUpdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { logout } = useAuth();
 
   useEffect(() => {
     async function load() {
@@ -134,6 +136,14 @@ export default function SettingsPage() {
         <div className="border-t pt-6">
           <h3 className="text-lg font-semibold mb-4">Password</h3>
           <Button variant="outline">Change Password</Button>
+        </div>
+
+        <div className="border-t pt-6">
+          <h3 className="text-lg font-semibold mb-4">Account</h3>
+          <Button variant="outline" onClick={logout} className="gap-2">
+            <LogOut className="size-4" />
+            Log Out
+          </Button>
         </div>
 
         <div className="border-t pt-6">

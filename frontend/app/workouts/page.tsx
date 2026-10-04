@@ -166,11 +166,18 @@ export default async function WorkoutsPage() {
                         <h3 className="text-lg font-semibold">
                           {workout.name}
                         </h3>
-                        <div className="text-sm text-muted-foreground ml-4">
-                          {new Intl.DateTimeFormat(undefined, {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                          }).format(new Date(workout.creation_date))}
+                        <div className="text-sm text-muted-foreground ml-4 text-right">
+                          <div>
+                            {new Intl.DateTimeFormat(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            }).format(new Date(workout.creation_date))}
+                          </div>
+                          {workout.rpe && (
+                            <div className="font-semibold text-foreground">
+                              RPE: {workout.rpe}
+                            </div>
+                          )}
                         </div>
                       </div>
                       <p>{workout.description}</p>

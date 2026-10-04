@@ -79,6 +79,8 @@ class Workout(Base):
     planned = Column(Boolean, nullable=False, default=True)
     name = Column(String(255), nullable=False)
     description = Column(String(1024), nullable=True)
+    note = Column(String(2048), nullable=True)
+    rpe = Column(Float, nullable=True)
     creation_date = Column(DateTime, nullable=False, default=lambda: datetime.now(UTC))
     mesocycle_id = Column(
         Integer, ForeignKey("mesocycles.id", ondelete="SET NULL"), nullable=True

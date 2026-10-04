@@ -203,6 +203,8 @@ def create_workout(
         user_id=workout.user_id,
         planned=workout.planned,
         description=workout.description,
+        note=workout.note,
+        rpe=workout.rpe,
         mesocycle_id=workout.mesocycle_id,
     )
     db.add(db_workout)

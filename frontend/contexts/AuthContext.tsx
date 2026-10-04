@@ -24,17 +24,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const [token, setToken] = useState<string | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 
-	useEffect(() => {
-		// Check for existing token on mount
-		const storedToken = localStorage.getItem("token");
-		if (storedToken) {
-			setToken(storedToken);
-			fetchUser(storedToken);
-		} else {
-			setIsLoading(false);
-		}
-	}, []);
-
 	const fetchUser = async (authToken: string) => {
 		try {
 			const response = await fetch("http://localhost:8000/auth/me", {
@@ -57,6 +46,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 			setIsLoading(false);
 		}
 	};
+
+	useEffect(() => {
+		// Check for existing token on mount
+		const storedToken = localStorage.getItem("token");
+		if (storedToken) {
+			setToken(storedToken);
+			fetchUser(storedToken);
+		} else {
+			setIsLoading(false);
+		}
+	}, []);
 
 	const login = async (email: string, password: string) => {
 		const response = await fetch("http://localhost:8000/auth/login", {

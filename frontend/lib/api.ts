@@ -14,6 +14,8 @@ export interface Workout {
   name: string;
   planned: boolean;
   description: string | null;
+  note?: string | null;
+  rpe?: number | null;
   creation_date: string;
   mesocycle_id: number | null;
 }

@@ -50,12 +50,18 @@ def test_api_full_flow(client):
     # 3. Create Workout
     resp = client.post(
         "/workouts",
-        json={"name": "API Test Workout", "user_id": user_id, "mesocycle_id": meso_id},
+        json={
+            "name": "API Test Workout",
+            "user_id": user_id,
+            "mesocycle_id": meso_id,
+            "note": "Initial test note",
+        },
     )
     assert resp.status_code == 201
     workout_data = resp.json()
     workout_id = workout_data["id"]
     assert workout_data["mesocycle_id"] == meso_id
+    assert workout_data["note"] == "Initial test note"
 
     # 4. Create Exercise
     resp = client.post(

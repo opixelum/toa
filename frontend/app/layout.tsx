@@ -53,7 +53,7 @@ export default function RootLayout({
         <AuthProvider>
           <Navigation />
           <AuthGuard>
-            <main className="flex-1">{children}</main>
+            <main className="flex-1 pb-20">{children}</main>
           </AuthGuard>
         </AuthProvider>
       </body>

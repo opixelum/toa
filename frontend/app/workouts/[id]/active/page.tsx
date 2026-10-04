@@ -1,7 +1,10 @@
 "use client";
-import { Check, GripHorizontal, Trash2 } from "lucide-react";
+import { Check, Timer, Trash2 } from "lucide-react";
 import { notFound, usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { ExerciseSearchDialog } from "@/components/exercise-search-dialog";
+import { RestTimerDialog } from "@/components/rest-timer-dialog";
+import { SwipeableSetRow } from "@/components/swipeable-set-row";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,6 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import {
   api,
   type DurationSet,
@@ -35,6 +39,8 @@ import {
   type Workout,
   type WorkoutExercise,
 } from "@/lib/api";
+import { playSetCheckSound, playTimerDoneSound } from "@/lib/sound";
+import { cn } from "@/lib/utils";
 
 interface SetCompletion {
   completed: boolean;
@@ -62,11 +68,16 @@ const SET_TYPE_LABELS: Record<string, string> = {
 };
 
 const SET_TYPE_COLORS: Record<string, string> = {
-  WARMUP: "bg-orange-100 border-orange-300 text-orange-800",
-  FAILURE: "bg-red-300 border-red-600 text-red-800",
-  DROPSET: "bg-blue-100 border-blue-300 text-blue-800",
-  SUPERSET: "bg-purple-100 border-purple-300 text-purple-800",
-  WORKSET: "bg-background",
+  WARMUP:
+    "bg-amber-100 border-amber-300 text-amber-900 dark:bg-amber-950/70 dark:border-amber-800 dark:text-amber-300",
+  FAILURE:
+    "bg-rose-100 border-rose-300 text-rose-900 dark:bg-rose-950/70 dark:border-rose-800 dark:text-rose-300",
+  DROPSET:
+    "bg-blue-100 border-blue-300 text-blue-900 dark:bg-blue-950/70 dark:border-blue-800 dark:text-blue-300",
+  SUPERSET:
+    "bg-purple-100 border-purple-300 text-purple-900 dark:bg-purple-950/70 dark:border-purple-800 dark:text-purple-300",
+  WORKSET:
+    "bg-slate-100 border-slate-300 text-slate-800 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200",
 };
 
 const SET_TYPE_SHORT_LABELS: Record<string, string> = {
@@ -128,10 +139,15 @@ export default function ActiveWorkoutPage({
   const [dialogMode, setDialogMode] = useState<"cancel" | "finish" | null>(
     null,
   );
-  const [exerciseDialogOpen, setExerciseDialogOpen] = useState(false);
-  const [selectedExerciseId, setSelectedExerciseId] = useState<number | null>(
-    null,
-  );
+  const [exerciseSearchDialogOpen, setExerciseSearchDialogOpen] =
+    useState(false);
+  const [restTimerDialogOpen, setRestTimerDialogOpen] = useState(false);
+  const [postWorkoutNote, setPostWorkoutNote] = useState("");
+  const [workoutRpe, setWorkoutRpe] = useState<number | null>(null);
+  const [postWorkoutDialogOpen, setPostWorkoutDialogOpen] = useState(false);
+  const [pendingFinishAction, setPendingFinishAction] = useState<
+    (() => Promise<void>) | null
+  >(null);
   const [exerciseGroups, setExerciseGroups] = useState<ExerciseGroup[]>([]);
   const [exerciseRestTimes, setExerciseRestTimes] = useState<
     Record<string, number>
@@ -150,6 +166,10 @@ export default function ActiveWorkoutPage({
   const initialDurationSetIdsRef = useRef<Set<number>>(new Set());
   const initialRepSetsRef = useRef<Map<number, RepSet>>(new Map());
   const initialDurationSetsRef = useRef<Map<number, DurationSet>>(new Map());
+  const postWorkoutNoteRef = useRef(postWorkoutNote);
+  postWorkoutNoteRef.current = postWorkoutNote;
+  const workoutRpeRef = useRef(workoutRpe);
+  workoutRpeRef.current = workoutRpe;
   const pathname = usePathname();
   const isEditMode = pathname.endsWith("/edit");
   const isNewMode = pathname.endsWith("/workouts/new");
@@ -167,9 +187,11 @@ export default function ActiveWorkoutPage({
             name: "",
             planned: true,
             description: null,
+            note: null,
             creation_date: new Date().toISOString(),
             mesocycle_id: null,
           });
+          setPostWorkoutNote("");
           setExercises(exercisesData);
           setRepSets([]);
           setDurationSets([]);
@@ -203,6 +225,9 @@ export default function ActiveWorkoutPage({
         );
 
         setWorkout(workoutData);
+        // Clear post-workout note and RPE when starting from history (non-planned workout)
+        setPostWorkoutNote(workoutData.planned ? workoutData.note || "" : "");
+        setWorkoutRpe(workoutData.planned ? (workoutData.rpe ?? null) : null);
         setExercises(exercisesData);
         setWorkoutExercises(workoutExercisesData);
         setRepSets(nextRepSets);
@@ -248,8 +273,6 @@ export default function ActiveWorkoutPage({
         setExerciseGroups(() => {
           const groups: ExerciseGroup[] = [];
 
-          // Sort sets by their original order if we have that information
-          // For now, we'll maintain the order they come from the API
           const orderedSets = [...nextRepSets, ...nextDurationSets].sort(
             (a, b) => a.position - b.position,
           );
@@ -310,13 +333,42 @@ export default function ActiveWorkoutPage({
       setActiveRestTime((prev) => {
         if (!prev) return null;
         const newRemaining = prev.remaining - 1;
-        if (newRemaining <= 0) return null;
+        if (newRemaining <= 0) {
+          playTimerDoneSound();
+          return null;
+        }
         return { ...prev, remaining: newRemaining };
       });
     }, 1000);
 
     return () => clearInterval(interval);
   }, [activeRestTime]);
+
+  const handleStartRestTimer = (seconds: number) => {
+    setActiveRestTime({ setId: 0, remaining: seconds });
+  };
+
+  const handleStopRestTimer = () => {
+    setActiveRestTime(null);
+  };
+
+  const handleAdjustRestTimer = (deltaSeconds: number) => {
+    setActiveRestTime((prev) => {
+      if (!prev) {
+        return deltaSeconds > 0 ? { setId: 0, remaining: deltaSeconds } : null;
+      }
+      const nextRemaining = Math.max(0, prev.remaining + deltaSeconds);
+      if (nextRemaining === 0) return null;
+      return { ...prev, remaining: nextRemaining };
+    });
+  };
+
+  const formatRemainingRestTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    if (mins === 0) return `${secs}s`;
+    return `${mins}m ${secs.toString().padStart(2, "0")}s`;
+  };
 
   const formatTime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600);
@@ -357,11 +409,8 @@ export default function ActiveWorkoutPage({
     duration: 0,
   });
 
-  const handleAddExercise = () => {
-    if (!workout || selectedExerciseId === null) return;
-
-    const exercise = exercises.find((item) => item.id === selectedExerciseId);
-    if (!exercise) return;
+  const handleSelectExerciseFromModal = (exercise: Exercise) => {
+    if (!workout) return;
 
     const newSet =
       exercise.type === "REPS"
@@ -383,8 +432,6 @@ export default function ActiveWorkoutPage({
       ...prev,
       [exercise.id.toString()]: "",
     }));
-    setExerciseDialogOpen(false);
-    setSelectedExerciseId(null);
   };
 
   const handleDeleteSet = (setId: number) => {
@@ -631,12 +678,14 @@ export default function ActiveWorkoutPage({
       ...currentDurationSets.map(saveDurationSet),
     ]);
 
-    // Save workout metadata (name and description)
+    // Save workout metadata (name, description, note)
     if (!createOnly) {
       await api.updateWorkout(targetWorkoutId, {
         name: workout.name,
         planned: workout.planned,
         description: workout.description,
+        note: postWorkoutNote.trim() || null,
+        rpe: workoutRpe,
         mesocycle_id: workout.mesocycle_id,
       });
     }
@@ -746,6 +795,8 @@ export default function ActiveWorkoutPage({
       return next;
     });
 
+    playSetCheckSound();
+
     if (restTime > 0) {
       setActiveRestTime({ setId, remaining: restTime });
     }
@@ -779,7 +830,6 @@ export default function ActiveWorkoutPage({
     currentSets.push(set);
   });
 
-  const availableExercises = exercises;
   const orderedExerciseGroups =
     exerciseGroups.length > 0
       ? exerciseGroups
@@ -814,7 +864,7 @@ export default function ActiveWorkoutPage({
                 </div>
               </div>
               <Input
-                className="mt-2 mb-4"
+                className="mt-2 mb-3"
                 aria-label="Workout description"
                 placeholder="Description (optional)"
                 value={workout.description ?? ""}
@@ -829,51 +879,61 @@ export default function ActiveWorkoutPage({
                   )
                 }
               />
+              <div className="flex items-center gap-3 mb-4 flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 font-medium"
+                  onClick={() => setRestTimerDialogOpen(true)}
+                >
+                  <Timer className="size-4 text-orange-500" />
+                  Rest Timer
+                </Button>
+
+                {activeRestTime &&
+                  activeRestTime.remaining > 0 &&
+                  !isEditMode &&
+                  !isNewMode && (
+                    <div className="flex items-center gap-2 bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800/60 rounded-lg px-3 py-1 font-mono text-sm text-orange-600 dark:text-orange-400 font-semibold animate-in fade-in duration-200">
+                      <span>
+                        Rest:{" "}
+                        {formatRemainingRestTime(activeRestTime.remaining)}
+                      </span>
+                      <div className="flex items-center gap-1 font-sans">
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => handleAdjustRestTimer(-15)}
+                        >
+                          -15s
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-xs text-muted-foreground hover:text-foreground"
+                          onClick={() => handleAdjustRestTimer(15)}
+                        >
+                          +15s
+                        </Button>
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="ghost"
+                          className="h-6 px-1.5 text-xs text-destructive hover:text-destructive"
+                          onClick={handleStopRestTimer}
+                        >
+                          Skip
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+              </div>
             </div>
           </div>
-          {activeRestTime && !isEditMode && !isNewMode && (
-            <div className="flex justify-center items-center gap-2 mb-2">
-              <div className="text-lg font-medium text-orange-600">
-                Rest: {activeRestTime.remaining}s
-              </div>
-              <div className="flex gap-1">
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => setActiveRestTime(null)}
-                >
-                  Skip
-                </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() =>
-                    setActiveRestTime((prev) =>
-                      prev
-                        ? {
-                            ...prev,
-                            remaining: Math.max(0, prev.remaining - 15),
-                          }
-                        : null,
-                    )
-                  }
-                >
-                  -15s
-                </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() =>
-                    setActiveRestTime((prev) =>
-                      prev ? { ...prev, remaining: prev.remaining + 15 } : null,
-                    )
-                  }
-                >
-                  +15s
-                </Button>
-              </div>
-            </div>
-          )}
         </div>
         <div>
           {orderedExerciseGroups.length === 0 ? (
@@ -907,15 +967,9 @@ export default function ActiveWorkoutPage({
                 return (
                   <div key={group.id}>
                     {showBefore && <div className="h-1 rounded bg-blue-500" />}
-                    {/* biome-ignore lint/a11y/noStaticElementInteractions: the card is a drag-and-drop target containing form controls. */}
-                    <div
+                    <section
+                      role="none"
                       className="border rounded-lg p-4 w-full"
-                      draggable
-                      onDragStart={() => setDraggedGroupId(groupId)}
-                      onDragEnd={() => {
-                        setDraggedGroupId(null);
-                        setDropIndicator(null);
-                      }}
                       onDragOver={(event) =>
                         handleDragOverExercise(event, groupId)
                       }
@@ -923,16 +977,16 @@ export default function ActiveWorkoutPage({
                     >
                       <div className="flex items-center justify-between gap-3 mb-2">
                         <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            aria-label={`Reorder ${exercise.name}`}
-                            className="cursor-grab text-muted-foreground"
+                          <h3
                             draggable
                             onDragStart={() => setDraggedGroupId(groupId)}
+                            onDragEnd={() => {
+                              setDraggedGroupId(null);
+                              setDropIndicator(null);
+                            }}
+                            className="text-lg font-semibold cursor-grab active:cursor-grabbing select-none hover:text-primary transition-colors"
+                            title="Hold and drag to reorder exercise"
                           >
-                            <GripHorizontal aria-hidden="true" />
-                          </button>
-                          <h3 className="text-lg font-semibold">
                             {exercise.name}
                           </h3>
                         </div>
@@ -1018,8 +1072,9 @@ export default function ActiveWorkoutPage({
                               ] || "bg-background";
 
                             return (
-                              <TableRow
+                              <SwipeableSetRow
                                 key={set.id}
+                                onDelete={() => handleDeleteSet(set.id)}
                                 className={
                                   isCompleted
                                     ? "bg-green-50 dark:bg-green-950/50 dark:text-green-50"
@@ -1048,11 +1103,10 @@ export default function ActiveWorkoutPage({
                                   >
                                     <SelectTrigger
                                       showIcon={false}
-                                      className={`justify-center px-2 text-center font-medium min-w-8 ${
-                                        isCompleted
-                                          ? "bg-green-50 dark:bg-green-900/50 dark:text-green-50"
-                                          : selectColor
-                                      }`}
+                                      className={cn(
+                                        "justify-center px-2 text-center font-semibold min-w-8 rounded border shadow-xs",
+                                        selectColor,
+                                      )}
                                     >
                                       <SelectValue className="justify-center text-center">
                                         {getSetTypeDisplay(
@@ -1184,17 +1238,19 @@ export default function ActiveWorkoutPage({
                                   />
                                 </TableCell>
 
-                                <TableCell className="p-2 flex gap-1 text-center">
+                                <TableCell className="p-2 flex gap-1 text-center justify-center">
                                   {!isEditMode && !isNewMode && (
                                     <Button
+                                      type="button"
                                       variant={
                                         isCompleted ? "default" : "outline"
                                       }
-                                      className={
+                                      className={cn(
+                                        "transition-all font-semibold",
                                         isCompleted
-                                          ? "bg-green-600 text-white hover:bg-green-700"
-                                          : ""
-                                      }
+                                          ? "bg-emerald-600 hover:bg-emerald-700 text-white border-transparent shadow-sm"
+                                          : "bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:hover:bg-emerald-900 dark:text-emerald-300 dark:border-emerald-700",
+                                      )}
                                       onClick={() =>
                                         handleSetComplete(
                                           set.id,
@@ -1206,16 +1262,8 @@ export default function ActiveWorkoutPage({
                                       <Check className="size-4" />
                                     </Button>
                                   )}
-
-                                  <Button
-                                    variant="destructive"
-                                    className="border-destructive/40"
-                                    onClick={() => handleDeleteSet(set.id)}
-                                  >
-                                    <Trash2 className="size-4" />
-                                  </Button>
                                 </TableCell>
-                              </TableRow>
+                              </SwipeableSetRow>
                             );
                           })}
                         </TableBody>
@@ -1227,7 +1275,7 @@ export default function ActiveWorkoutPage({
                       >
                         + Add set
                       </Button>
-                    </div>
+                    </section>
                     {showAfter && <div className="h-1 rounded bg-blue-500" />}
                   </div>
                 );
@@ -1238,11 +1286,7 @@ export default function ActiveWorkoutPage({
           <Button
             className="w-full my-4"
             variant="outline"
-            disabled={availableExercises.length === 0}
-            onClick={() => {
-              setSelectedExerciseId(availableExercises[0]?.id ?? null);
-              setExerciseDialogOpen(true);
-            }}
+            onClick={() => setExerciseSearchDialogOpen(true)}
           >
             + Add exercise
           </Button>
@@ -1279,64 +1323,24 @@ export default function ActiveWorkoutPage({
             </Button>
           </div>
 
-          <Dialog
-            open={exerciseDialogOpen}
-            onOpenChange={(open) => {
-              setExerciseDialogOpen(open);
-              if (!open) setSelectedExerciseId(null);
-            }}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add exercise</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4 py-2">
-                <Select
-                  value={selectedExerciseId?.toString() ?? null}
-                  onValueChange={(value) =>
-                    setSelectedExerciseId(value ? Number(value) : null)
-                  }
-                >
-                  <SelectTrigger
-                    showIcon={false}
-                    className="w-full border px-3 py-2"
-                  >
-                    <SelectValue>
-                      {selectedExerciseId === null
-                        ? "Select an exercise"
-                        : availableExercises.find(
-                            (exercise) => exercise.id === selectedExerciseId,
-                          )?.name}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableExercises.map((exercise) => (
-                      <SelectItem
-                        key={exercise.id}
-                        value={exercise.id.toString()}
-                      >
-                        {exercise.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setExerciseDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  disabled={selectedExerciseId === null}
-                  onClick={handleAddExercise}
-                >
-                  Add
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <ExerciseSearchDialog
+            open={exerciseSearchDialogOpen}
+            onOpenChange={setExerciseSearchDialogOpen}
+            exercises={exercises}
+            onSelectExercise={handleSelectExerciseFromModal}
+            onExerciseCreated={(newEx) =>
+              setExercises((prev) => [...prev, newEx])
+            }
+          />
+
+          <RestTimerDialog
+            open={restTimerDialogOpen}
+            onOpenChange={setRestTimerDialogOpen}
+            activeRemaining={activeRestTime?.remaining ?? null}
+            onStartTimer={handleStartRestTimer}
+            onStopTimer={handleStopRestTimer}
+            onAdjustTimer={handleAdjustRestTimer}
+          />
 
           <Dialog
             open={dialogOpen}
@@ -1367,7 +1371,7 @@ export default function ActiveWorkoutPage({
                     ? "Are you sure you want to save your workout?"
                     : "Are you sure to finish your workout?"}
               </DialogDescription>
-              <DialogFooter>
+              <DialogFooter className="flex flex-row justify-end gap-2">
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
                   No
                 </Button>
@@ -1382,131 +1386,242 @@ export default function ActiveWorkoutPage({
                       return;
                     }
 
-                    try {
-                      if (isNewMode) {
+                    if (isNewMode) {
+                      // For new planned workouts, save directly (no post-workout modal)
+                      try {
                         if (!workout.name.trim()) return;
                         const newWorkout = await api.createWorkout({
                           name: workout.name.trim(),
                           planned: true,
                           description: workout.description?.trim() || null,
+                          note: postWorkoutNote.trim() || null,
+                          rpe: workoutRpe,
                           mesocycle_id: workout.mesocycle_id,
                         });
                         await saveEditedWorkout(newWorkout.id, true);
                         setDialogOpen(false);
                         router.push(`/workouts/${newWorkout.id}`);
-                        return;
+                      } catch (err) {
+                        console.error("Error creating workout", err);
+                        setDialogOpen(false);
                       }
+                      return;
+                    }
 
-                      if (isEditMode) {
+                    if (isEditMode) {
+                      // For edit mode, save directly (no post-workout modal)
+                      try {
                         await saveEditedWorkout();
                         setDialogOpen(false);
                         router.push(`/workouts/${workout.id}`);
-                        return;
+                      } catch (err) {
+                        console.error("Error updating workout", err);
+                        setDialogOpen(false);
                       }
+                      return;
+                    }
 
-                      const newWorkout = await api.createWorkout({
-                        name: workout?.name ?? "Finished workout",
-                        planned: false,
-                        description: workout?.description ?? null,
-                        mesocycle_id: workout?.mesocycle_id ?? null,
-                      });
-
-                      // Save workout exercises with notes
-                      for (const [index, group] of exerciseGroups.entries()) {
-                        const note =
-                          exerciseNotes[group.exerciseId.toString()] || null;
-                        await api.createWorkoutExercise({
-                          workout_id: newWorkout.id,
-                          exercise_id: group.exerciseId,
-                          position: index,
-                          note,
+                    // Active workout "Finish" — close confirmation, open post-workout modal
+                    setDialogOpen(false);
+                    setPendingFinishAction(() => async () => {
+                      try {
+                        const newWorkout = await api.createWorkout({
+                          name: workout?.name ?? "Finished workout",
+                          planned: false,
+                          description: workout?.description ?? null,
+                          note: postWorkoutNoteRef.current.trim() || null,
+                          rpe: workoutRpeRef.current,
+                          mesocycle_id: workout?.mesocycle_id ?? null,
                         });
-                      }
 
-                      for (const [
-                        setId,
-                        completion,
-                      ] of setCompletions.entries()) {
-                        if (!completion.completed) continue;
-
-                        const setObj =
-                          repSets.find((item) => item.id === setId) ||
-                          durationSets.find((item) => item.id === setId);
-                        if (!setObj) continue;
-
-                        const selectedType = (
-                          selectedSetTypes.get(setId) ??
-                          setObj.type_ ??
-                          "WORKSET"
-                        )
-                          .toString()
-                          .toUpperCase();
-                        const rawRpe = completion.actualValues.rpe;
-                        const numericWeight = completion.actualValues.weight
-                          ? Number.parseFloat(completion.actualValues.weight)
-                          : (setObj.weight ?? null);
-                        const numericRpe = rawRpe
-                          ? Number.parseFloat(rawRpe)
-                          : (setObj.rpe ?? null);
-
-                        const base = {
-                          workout_id: newWorkout.id,
-                          exercise_id: setObj.exercise_id,
-                          position: setObj.position,
-                          type_: selectedType,
-                          weight: Number.isFinite(numericWeight)
-                            ? numericWeight
-                            : null,
-                          rpe:
-                            numericRpe != null &&
-                            Number.isFinite(numericRpe) &&
-                            numericRpe > 0
-                              ? numericRpe
-                              : null,
-                          rest: Number.isFinite(setObj.rest) ? setObj.rest : 0,
-                        };
-
-                        if ("reps" in setObj) {
-                          const repsValue = completion.actualValues.reps
-                            ? Number.parseInt(completion.actualValues.reps, 10)
-                            : (setObj.reps ?? 0);
-
-                          await api.createRepSet({
-                            ...base,
-                            reps: Number.isFinite(repsValue) ? repsValue : 0,
-                          });
-                        } else {
-                          const durationValue = completion.actualValues.duration
-                            ? Number.parseInt(
-                                completion.actualValues.duration,
-                                10,
-                              )
-                            : (setObj.duration ?? 0);
-
-                          await api.createDurationSet({
-                            ...base,
-                            duration: Number.isFinite(durationValue)
-                              ? durationValue
-                              : 0,
+                        // Save workout exercises with notes
+                        for (const [index, group] of exerciseGroups.entries()) {
+                          const note =
+                            exerciseNotes[group.exerciseId.toString()] || null;
+                          await api.createWorkoutExercise({
+                            workout_id: newWorkout.id,
+                            exercise_id: group.exerciseId,
+                            position: index,
+                            note,
                           });
                         }
-                      }
-                    } catch (err) {
-                      console.error(
-                        isEditMode
-                          ? "Error updating workout"
-                          : "Error saving finished workout",
-                        err,
-                      );
-                    } finally {
-                      setDialogOpen(false);
-                      if (!isEditMode && !isNewMode) {
+
+                        for (const [
+                          setId,
+                          completion,
+                        ] of setCompletions.entries()) {
+                          if (!completion.completed) continue;
+
+                          const setObj =
+                            repSets.find((item) => item.id === setId) ||
+                            durationSets.find((item) => item.id === setId);
+                          if (!setObj) continue;
+
+                          const selectedType = (
+                            selectedSetTypes.get(setId) ??
+                            setObj.type_ ??
+                            "WORKSET"
+                          )
+                            .toString()
+                            .toUpperCase();
+                          const rawRpe = completion.actualValues.rpe;
+                          const numericWeight = completion.actualValues.weight
+                            ? Number.parseFloat(completion.actualValues.weight)
+                            : (setObj.weight ?? null);
+                          const numericRpe = rawRpe
+                            ? Number.parseFloat(rawRpe)
+                            : (setObj.rpe ?? null);
+
+                          const base = {
+                            workout_id: newWorkout.id,
+                            exercise_id: setObj.exercise_id,
+                            position: setObj.position,
+                            type_: selectedType,
+                            weight: Number.isFinite(numericWeight)
+                              ? numericWeight
+                              : null,
+                            rpe:
+                              numericRpe != null &&
+                              Number.isFinite(numericRpe) &&
+                              numericRpe > 0
+                                ? numericRpe
+                                : null,
+                            rest: Number.isFinite(setObj.rest)
+                              ? setObj.rest
+                              : 0,
+                          };
+
+                          if ("reps" in setObj) {
+                            const repsValue = completion.actualValues.reps
+                              ? Number.parseInt(
+                                  completion.actualValues.reps,
+                                  10,
+                                )
+                              : (setObj.reps ?? 0);
+
+                            await api.createRepSet({
+                              ...base,
+                              reps: Number.isFinite(repsValue) ? repsValue : 0,
+                            });
+                          } else {
+                            const durationValue = completion.actualValues
+                              .duration
+                              ? Number.parseInt(
+                                  completion.actualValues.duration,
+                                  10,
+                                )
+                              : (setObj.duration ?? 0);
+
+                            await api.createDurationSet({
+                              ...base,
+                              duration: Number.isFinite(durationValue)
+                                ? durationValue
+                                : 0,
+                            });
+                          }
+                        }
+                      } catch (err) {
+                        console.error("Error saving finished workout", err);
+                      } finally {
                         router.push("/workouts");
                       }
-                    }
+                    });
+                    setPostWorkoutDialogOpen(true);
                   }}
                 >
                   Yes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={postWorkoutDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                setPostWorkoutDialogOpen(false);
+                setPendingFinishAction(null);
+              }
+            }}
+          >
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Post Workout Summary</DialogTitle>
+                <DialogDescription>
+                  Rate how difficult this workout felt and add any notes.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-5 py-2">
+                <div className="space-y-2">
+                  <div className="font-semibold text-sm text-foreground">
+                    Overall RPE
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Rate the perceived difficulty of the entire workout (1-10)
+                  </p>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: 10 }, (_, i) => i + 1).map(
+                      (value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className={cn(
+                            "flex items-center justify-center w-8 h-8 rounded-full transition-all text-sm font-semibold cursor-pointer",
+                            workoutRpe === value
+                              ? "bg-primary text-primary-foreground shadow-md scale-110"
+                              : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                          )}
+                          onClick={() =>
+                            setWorkoutRpe((prev) =>
+                              prev === value ? null : value,
+                            )
+                          }
+                        >
+                          {value}
+                        </button>
+                      ),
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label
+                    htmlFor="post-workout-note-modal"
+                    className="font-semibold text-sm text-foreground"
+                  >
+                    Note
+                  </label>
+                  <Textarea
+                    id="post-workout-note-modal"
+                    placeholder="How did this workout feel? PRs, fatigue, reflections..."
+                    value={postWorkoutNote}
+                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                      setPostWorkoutNote(e.target.value)
+                    }
+                    rows={3}
+                  />
+                </div>
+              </div>
+              <DialogFooter className="flex flex-row justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPostWorkoutDialogOpen(false);
+                    setPendingFinishAction(null);
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={async () => {
+                    setPostWorkoutDialogOpen(false);
+                    if (pendingFinishAction) {
+                      await pendingFinishAction();
+                    }
+                    setPendingFinishAction(null);
+                  }}
+                >
+                  Save Workout
                 </Button>
               </DialogFooter>
             </DialogContent>
