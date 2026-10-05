@@ -310,3 +310,26 @@ class DurationSetRead(BaseModel):
     duration: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Personal Records (PR) Schemas ---
+
+
+class PersonalRecordRead(BaseModel):
+    type: str
+    label: str
+    value: float
+    unit: str
+    date: datetime | None = None
+
+
+class RepsAtWeightRead(BaseModel):
+    weight: float
+    reps: int
+    date: datetime | None = None
+
+
+class ExercisePRsRead(BaseModel):
+    exercise_id: int
+    records: list[PersonalRecordRead]
+    reps_per_weight: list[RepsAtWeightRead]
