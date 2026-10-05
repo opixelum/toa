@@ -35,9 +35,7 @@ def compute_exercise_prs(
     records: list[schemas.PersonalRecordRead] = []
     sets = list(exercise.sets)
 
-    rep_sets = [
-        s for s in sets if s.rep_set is not None and s.rep_set.reps is not None
-    ]
+    rep_sets = [s for s in sets if s.rep_set is not None and s.rep_set.reps is not None]
     duration_sets = [s for s in sets if s.duration_set is not None]
 
     is_duration = exercise.type == "DURATION"
@@ -81,8 +79,7 @@ def compute_exercise_prs(
             )
         if bodyweight is not None:
             totals = [
-                (bodyweight + (s.weight or 0.0), _workout_date(s))
-                for s in rep_sets
+                (bodyweight + (s.weight or 0.0), _workout_date(s)) for s in rep_sets
             ]
             if totals:
                 value, date = max(totals, key=lambda item: item[0])
@@ -99,9 +96,7 @@ def compute_exercise_prs(
         if weighted:
             value, date = min(weighted, key=lambda item: item[0])
             records.append(
-                _make_record(
-                    "HEAVIEST_WEIGHT", "Least assistance", value, "kg", date
-                )
+                _make_record("HEAVIEST_WEIGHT", "Least assistance", value, "kg", date)
             )
     elif weighted:
         value, date = max(weighted, key=lambda item: item[0])
@@ -116,12 +111,14 @@ def compute_exercise_prs(
             reps = s.rep_set.reps
             if reps is None or reps <= 0:
                 continue
-            if s.weight is None or s.weight <= 0:
-                if not (is_bodyweight and bodyweight is not None):
-                    continue
-            load = s.weight or 0.0
-            if is_bodyweight and bodyweight is not None:
-                load = bodyweight + load
+            if s.weight is not None and s.weight > 0:
+                load = s.weight
+                if is_bodyweight and bodyweight is not None:
+                    load = bodyweight + load
+            elif is_bodyweight and bodyweight is not None:
+                load = bodyweight
+            else:
+                continue
             est = load * (1 + reps / 30.0) if reps > 1 else load
             estimates.append((est, _workout_date(s)))
         if estimates:
