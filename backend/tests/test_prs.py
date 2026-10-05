@@ -116,6 +116,7 @@ def test_bodyweight_prs(db_session):
 
     assert _record(result, "ADDITIONAL_WEIGHT").value == 20.0
     assert _record(result, "TOTAL_WEIGHT").value == 100.0  # 80 + 20
+    assert _record(result, "MAX_VOLUME").value == 960.0  # 80 x 12 (unweighted)
 
 
 def test_duration_prs(db_session):
