@@ -206,6 +206,7 @@ def create_workout(
         note=workout.note,
         rpe=workout.rpe,
         mesocycle_id=workout.mesocycle_id,
+        source_workout_id=workout.source_workout_id,
     )
     db.add(db_workout)
     db.commit()
