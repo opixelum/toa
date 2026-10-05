@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { api, type Exercise } from "@/lib/api";
+import { api, type Exercise, type ExercisePRs } from "@/lib/api";
 
 export default function ExercisePage({
   params,
@@ -37,13 +37,19 @@ export default function ExercisePage({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [prs, setPrs] = useState<ExercisePRs | null>(null);
 
   useEffect(() => {
     async function loadExercise() {
       try {
         const { id } = await params;
-        const exerciseData = await api.getExercise(Number.parseInt(id, 10));
+        const exerciseId = Number.parseInt(id, 10);
+        const [exerciseData, prsData] = await Promise.all([
+          api.getExercise(exerciseId),
+          api.getExercisePRs(exerciseId),
+        ]);
         setExercise(exerciseData);
+        setPrs(prsData);
         setName(exerciseData.name);
         setDescription(exerciseData.description || "");
         setType(exerciseData.type as "REPS" | "DURATION");
@@ -211,6 +217,63 @@ export default function ExercisePage({
               </div>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card className="max-w-2xl mx-auto mt-6">
+        <CardHeader>
+          <CardTitle>Personal Records</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {prs && (prs.records.length > 0 || prs.reps_per_weight.length > 0) ? (
+            <div className="space-y-4">
+              {prs.records.map((record) => (
+                <div
+                  key={record.type}
+                  className="flex items-center justify-between border-b pb-2"
+                >
+                  <div>
+                    <div className="font-medium">{record.label}</div>
+                    {record.date && (
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(record.date).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="font-semibold">
+                    {record.value} {record.unit}
+                  </div>
+                </div>
+              ))}
+              {prs.reps_per_weight.length > 0 && (
+                <div>
+                  <div className="font-medium mb-2">Most reps per weight</div>
+                  <div className="space-y-1">
+                    {prs.reps_per_weight.map((rw) => (
+                      <div
+                        key={rw.weight}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span>{rw.weight} kg</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold">{rw.reps} reps</span>
+                          {rw.date && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(rw.date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-muted-foreground text-sm">
+              No personal records yet — log some workouts to see them here.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
