@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from . import auth, crud, schemas
+from . import auth, crud, prs, schemas
 from .database import engine, get_db
 from .models import Base, User
 
@@ -410,6 +410,17 @@ def delete_exercise(exercise_id: int, db: DbSession):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found"
         )
+
+
+@app.get("/exercises/{exercise_id}/prs", response_model=schemas.ExercisePRsRead)
+def read_exercise_prs(exercise_id: int, db: DbSession):
+    exercise = crud.get_exercise(db, exercise_id)
+    if not exercise:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found"
+        )
+    bodyweight = exercise.user.bodyweight if exercise.user else None
+    return prs.compute_exercise_prs(exercise, bodyweight)
 
 
 # --- WorkoutExercises ---
