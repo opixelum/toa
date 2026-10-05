@@ -34,6 +34,26 @@ export interface Exercise {
     | "ASSISTED_BODYWEIGHT";
 }
 
+export interface PersonalRecord {
+  type: string;
+  label: string;
+  value: number;
+  unit: string;
+  date: string | null;
+}
+
+export interface RepsAtWeight {
+  weight: number;
+  reps: number;
+  date: string | null;
+}
+
+export interface ExercisePRs {
+  exercise_id: number;
+  records: PersonalRecord[];
+  reps_per_weight: RepsAtWeight[];
+}
+
 export interface WorkoutExercise {
   id: number;
   workout_id: number;
@@ -132,6 +152,9 @@ export const api = {
     fetchAPI(`/exercises?user_id=${userId}`),
 
   getExercise: (exerciseId: number) => fetchAPI(`/exercises/${exerciseId}`),
+
+  getExercisePRs: (exerciseId: number) =>
+    fetchAPI(`/exercises/${exerciseId}/prs`),
 
   createExercise: (data: Omit<Exercise, "id" | "user_id">) =>
     fetchAPI("/exercises", {
