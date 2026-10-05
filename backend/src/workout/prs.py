@@ -148,9 +148,13 @@ def compute_exercise_prs(
     volumes: list[tuple[float, datetime | None]] = []
     for s in rep_sets:
         reps = s.rep_set.reps
-        if s.weight is None or s.weight <= 0 or reps is None or reps <= 0:
+        if reps is None or reps <= 0:
             continue
-        volumes.append((s.weight * reps, _workout_date(s)))
+        if is_bodyweight and bodyweight is not None:
+            load = bodyweight + (s.weight or 0.0)
+            volumes.append((load * reps, _workout_date(s)))
+        elif s.weight is not None and s.weight > 0:
+            volumes.append((s.weight * reps, _workout_date(s)))
     if volumes:
         value, date = max(volumes, key=lambda item: item[0])
         records.append(
