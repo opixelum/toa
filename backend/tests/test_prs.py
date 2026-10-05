@@ -16,7 +16,9 @@ def _workout(db, user_id):
 def _exercise(db, user_id, name, type_, equipment):
     return crud.create_exercise(
         db,
-        schemas.ExerciseCreate(name=name, user_id=user_id, type=type_, equipment=equipment),
+        schemas.ExerciseCreate(
+            name=name, user_id=user_id, type=type_, equipment=equipment
+        ),
     )
 
 
