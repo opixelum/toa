@@ -1,4 +1,6 @@
-# Workout
+# Toa
+
+Workout tracker web-app (soon iOS app)
 
 ## Getting Started
 

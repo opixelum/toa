@@ -1,4 +1,12 @@
-const API_BASE_URL = "https://toa-5gzn.onrender.com";
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(
+  /\/+$/,
+  "",
+);
+export const API_BASE_URL =
+  configuredApiBaseUrl ||
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:8000"
+    : "https://toa-5gzn.onrender.com");
 
 const DEFAULT_USER_ID = 1;
 
@@ -18,6 +26,12 @@ export interface Workout {
   rpe?: number | null;
   creation_date: string;
   mesocycle_id: number | null;
+  source_workout_id?: number | null;
+}
+
+export interface WorkoutVolume {
+  workout_id: number;
+  total_volume: number;
 }
 
 export interface Exercise {
@@ -34,6 +48,34 @@ export interface Exercise {
     | "ASSISTED_BODYWEIGHT";
 }
 
+export interface PersonalRecord {
+  type: string;
+  label: string;
+  value: number;
+  unit: string;
+  date: string | null;
+  detail?: string | null;
+}
+
+export interface RepsAtWeight {
+  weight: number;
+  reps: number;
+  date: string | null;
+}
+
+export interface ExercisePRs {
+  exercise_id: number;
+  records: PersonalRecord[];
+  reps_per_weight: RepsAtWeight[];
+  duration_per_weight: DurationAtWeight[];
+}
+
+export interface DurationAtWeight {
+  weight: number;
+  duration: number;
+  date: string | null;
+}
+
 export interface WorkoutExercise {
   id: number;
   workout_id: number;
@@ -44,6 +86,7 @@ export interface WorkoutExercise {
 
 export interface Set {
   id: number;
+  set_id?: number;
   workout_id: number;
   exercise_id: number;
   position: number;
@@ -103,9 +146,12 @@ export const api = {
 
   // Workouts
   getWorkouts: (userId: number = DEFAULT_USER_ID) =>
-    fetchAPI(`/workouts?user_id=${userId}`),
+    fetchAPI(`/workouts?user_id=${userId}&limit=1000`),
 
   getWorkout: (workoutId: number) => fetchAPI(`/workouts/${workoutId}`),
+
+  getWorkoutVolume: (workoutId: number): Promise<WorkoutVolume> =>
+    fetchAPI(`/workouts/${workoutId}/volume`),
 
   createWorkout: (data: WorkoutInput) =>
     fetchAPI("/workouts", {
@@ -133,6 +179,9 @@ export const api = {
 
   getExercise: (exerciseId: number) => fetchAPI(`/exercises/${exerciseId}`),
 
+  getExercisePRs: (exerciseId: number) =>
+    fetchAPI(`/exercises/${exerciseId}/prs`),
+
   createExercise: (data: Omit<Exercise, "id" | "user_id">) =>
     fetchAPI("/exercises", {
       method: "POST",
@@ -158,9 +207,17 @@ export const api = {
     return fetchAPI(`/sets?${params.toString()}`);
   },
 
-  getRepSets: () => fetchAPI("/rep_sets"),
+  getRepSets: (workoutId?: number) => {
+    const params = new URLSearchParams({ limit: "1000" });
+    if (workoutId !== undefined) params.set("workout_id", workoutId.toString());
+    return fetchAPI(`/rep_sets?${params.toString()}`);
+  },
 
-  getDurationSets: () => fetchAPI("/duration_sets"),
+  getDurationSets: (workoutId?: number) => {
+    const params = new URLSearchParams({ limit: "1000" });
+    if (workoutId !== undefined) params.set("workout_id", workoutId.toString());
+    return fetchAPI(`/duration_sets?${params.toString()}`);
+  },
 
   // Create rep/duration sets
   createRepSet: (data: Omit<RepSet, "id" | "set_id">) =>
@@ -198,8 +255,14 @@ export const api = {
     }),
 
   // WorkoutExercises
-  getWorkoutExercises: (workoutId: number) =>
-    fetchAPI(`/workout_exercises?workout_id=${workoutId}`),
+  getWorkoutExercises: (workoutId?: number) => {
+    const params = new URLSearchParams({ limit: "1000" });
+    if (workoutId !== undefined) {
+      params.set("workout_id", workoutId.toString());
+    }
+    const query = params.toString();
+    return fetchAPI(`/workout_exercises${query ? `?${query}` : ""}`);
+  },
 
   createWorkoutExercise: (data: Omit<WorkoutExercise, "id">) =>
     fetchAPI("/workout_exercises", {

@@ -79,6 +79,13 @@ def test_api_full_flow(client):
     exercise_id = exercise_data["id"]
     assert exercise_data["equipment"] == "BARBELL"
 
+    resp = client.post(
+        "/workout_exercises",
+        json={"workout_id": workout_id, "exercise_id": exercise_id, "position": 0},
+    )
+    assert resp.status_code == 201
+    assert resp.json()["exercise_id"] == exercise_id
+
     # Update Exercise equipment
     resp = client.put(
         f"/exercises/{exercise_id}",
@@ -139,6 +146,31 @@ def test_api_full_flow(client):
     assert len(client.get(f"/exercises?user_id={user_id}").json()) >= 1
     assert len(client.get("/rep_sets").json()) >= 1
     assert len(client.get("/duration_sets").json()) >= 1
+    assert len(client.get(f"/rep_sets?workout_id={workout_id}").json()) == 1
+    assert len(client.get(f"/duration_sets?workout_id={workout_id}").json()) == 1
+    workout_exercises = client.get(f"/workout_exercises?workout_id={workout_id}").json()
+    assert [item["exercise_id"] for item in workout_exercises] == [exercise_id]
+
+    # The RepSet ID sequence can diverge from parent Set IDs when other set
+    # types are inserted; route updates must target the RepSet ID only.
+    for reps in (5, 6):
+        assert (
+            client.post(
+                "/rep_sets",
+                json={
+                    "workout_id": workout_id,
+                    "exercise_id": exercise_id,
+                    "type_": "WORKSET",
+                    "weight": 80.0,
+                    "reps": reps,
+                },
+            ).status_code
+            == 201
+        )
+    resp = client.patch("/rep_sets/3", json={"weight": 123.0})
+    assert resp.status_code == 200
+    assert resp.json()["id"] == 3
+    assert resp.json()["weight"] == 123.0
 
     # 8. Clean up: Delete User (cascades)
     resp = client.delete(f"/users/{user_id}")

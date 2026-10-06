@@ -130,6 +130,7 @@ class WorkoutBase(BaseModel):
 class WorkoutCreate(WorkoutBase):
     user_id: int
     mesocycle_id: int | None = None
+    source_workout_id: int | None = None
 
 
 class WorkoutUpdate(BaseModel):
@@ -139,15 +140,22 @@ class WorkoutUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=2048)
     rpe: float | None = Field(default=None, ge=1.0, le=10.0)
     mesocycle_id: int | None = None
+    source_workout_id: int | None = None
 
 
 class WorkoutRead(WorkoutBase):
     id: int
     user_id: int
     mesocycle_id: int | None = None
+    source_workout_id: int | None = None
     creation_date: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class WorkoutVolumeRead(BaseModel):
+    workout_id: int
+    total_volume: float
 
 
 # --- Exercise Schemas ---
@@ -251,6 +259,7 @@ class RepSetCreate(RepSetBase):
 
 
 class RepSetUpdate(BaseModel):
+    position: int | None = None
     type_: SetType | None = None
     weight: float | None = None
     rpe: float | None = Field(default=None, ge=1.0, le=10.0)
@@ -288,6 +297,7 @@ class DurationSetCreate(DurationSetBase):
 
 
 class DurationSetUpdate(BaseModel):
+    position: int | None = None
     type_: SetType | None = None
     weight: float | None = None
     rpe: float | None = Field(default=None, ge=1.0, le=10.0)
@@ -310,3 +320,34 @@ class DurationSetRead(BaseModel):
     duration: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Personal Records (PR) Schemas ---
+
+
+class PersonalRecordRead(BaseModel):
+    type: str
+    label: str
+    value: float
+    unit: str
+    date: datetime | None = None
+    detail: str | None = None
+
+
+class RepsAtWeightRead(BaseModel):
+    weight: float
+    reps: int
+    date: datetime | None = None
+
+
+class DurationAtWeightRead(BaseModel):
+    weight: float
+    duration: int
+    date: datetime | None = None
+
+
+class ExercisePRsRead(BaseModel):
+    exercise_id: int
+    records: list[PersonalRecordRead]
+    reps_per_weight: list[RepsAtWeightRead]
+    duration_per_weight: list[DurationAtWeightRead] = Field(default_factory=list)

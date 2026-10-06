@@ -1,20 +1,13 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { api, type Exercise } from "@/lib/api";
+import { api, type Exercise, type ExercisePRs } from "@/lib/api";
+import { pluralizeRepCounts, repUnit } from "@/lib/rep-format";
 
 export default function ExercisePage({
   params,
@@ -23,31 +16,20 @@ export default function ExercisePage({
 }) {
   const router = useRouter();
   const [exercise, setExercise] = useState<Exercise | null>(null);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [type, setType] = useState<"REPS" | "DURATION">("REPS");
-  const [equipment, setEquipment] = useState<
-    | "BARBELL"
-    | "DUMBBELL"
-    | "MACHINE"
-    | "BODYWEIGHT"
-    | "ASSISTED_BODYWEIGHT"
-    | null
-  >(null);
+  const [prs, setPrs] = useState<ExercisePRs | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     async function loadExercise() {
       try {
         const { id } = await params;
-        const exerciseData = await api.getExercise(Number.parseInt(id, 10));
+        const exerciseId = Number.parseInt(id, 10);
+        const [exerciseData, prsData] = await Promise.all([
+          api.getExercise(exerciseId),
+          api.getExercisePRs(exerciseId),
+        ]);
         setExercise(exerciseData);
-        setName(exerciseData.name);
-        setDescription(exerciseData.description || "");
-        setType(exerciseData.type as "REPS" | "DURATION");
-        setEquipment(exerciseData.equipment);
+        setPrs(prsData);
       } catch (error) {
         console.error("Error loading exercise:", error);
       } finally {
@@ -57,41 +39,6 @@ export default function ExercisePage({
     loadExercise();
   }, [params]);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!exercise || !name.trim() || !equipment) return;
-
-    setSaving(true);
-    try {
-      await api.updateExercise(exercise.id, {
-        name,
-        description: description || null,
-        type,
-        equipment,
-      });
-      router.push("/exercises");
-    } catch (error) {
-      console.error("Error updating exercise:", error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!exercise) return;
-    if (!confirm("Are you sure you want to delete this exercise?")) return;
-
-    setDeleting(true);
-    try {
-      await api.deleteExercise(exercise.id);
-      router.push("/exercises");
-    } catch (error) {
-      console.error("Error deleting exercise:", error);
-    } finally {
-      setDeleting(false);
-    }
-  };
-
   if (loading) {
     return <div className="container mx-auto p-6">Loading...</div>;
   }
@@ -100,117 +47,129 @@ export default function ExercisePage({
     return <div className="container mx-auto p-6">Exercise not found</div>;
   }
 
+  const hasPrs =
+    (prs?.records.length ?? 0) > 0 ||
+    (prs?.reps_per_weight.length ?? 0) > 0 ||
+    (prs?.duration_per_weight.length ?? 0) > 0;
+
   return (
-    <div className="container mx-auto p-6">
-      <Card className="max-w-2xl mx-auto">
+    <div className="container mx-auto space-y-6 p-6">
+      <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center">
+          <Link href="/exercises" className="flex items-center">
+            <Button
+              variant="ghost"
+              className="-ml-4 flex items-center"
+              aria-label="Back to exercises"
+            >
+              <ChevronLeft className="size-8" />
+            </Button>
+          </Link>
+          <h1 className="truncate text-2xl font-bold">{exercise.name}</h1>
+        </div>
+        <Button onClick={() => router.push(`/exercises/${exercise.id}/edit`)}>
+          Edit exercise
+        </Button>
+      </div>
+
+      <Card className="mx-auto max-w-2xl">
+        <CardContent className="space-y-3">
+          {exercise.description && <p>{exercise.description}</p>}
+          <p>
+            <span className="font-medium">Type:</span> {exercise.type}
+          </p>
+          <p>
+            <span className="font-medium">Equipment:</span>{" "}
+            {exercise.equipment.replaceAll("_", " ").toLowerCase()}
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card className="mx-auto max-w-2xl">
         <CardHeader>
-          <CardTitle>Edit Exercise</CardTitle>
+          <CardTitle>Personal Records</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSave} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Exercise name"
-                required
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description (optional)</Label>
-              <Input
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Exercise description"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="type">Type</Label>
-              <Select
-                value={type}
-                onValueChange={(value) => {
-                  if (value === "REPS" || value === "DURATION") {
-                    setType(value);
-                  }
-                }}
-              >
-                <SelectTrigger id="type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="REPS">Rep-based</SelectItem>
-                  <SelectItem value="DURATION">Duration-based</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="equipment">Equipment</Label>
-              <Select
-                value={equipment ?? ""}
-                onValueChange={(value) => {
-                  if (value) {
-                    setEquipment(
-                      value as
-                        | "BARBELL"
-                        | "DUMBBELL"
-                        | "MACHINE"
-                        | "BODYWEIGHT"
-                        | "ASSISTED_BODYWEIGHT",
-                    );
-                  }
-                }}
-              >
-                <SelectTrigger id="equipment">
-                  <SelectValue placeholder="Select equipment" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BARBELL">Barbell</SelectItem>
-                  <SelectItem value="DUMBBELL">Dumbbell</SelectItem>
-                  <SelectItem value="MACHINE">Machine</SelectItem>
-                  <SelectItem value="BODYWEIGHT">Bodyweight</SelectItem>
-                  <SelectItem value="ASSISTED_BODYWEIGHT">
-                    Assisted Bodyweight
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2 justify-between">
-              <Button
-                type="button"
-                size="icon"
-                variant="destructive"
-                className="border-destructive/40"
-                onClick={handleDelete}
-                disabled={saving || deleting}
-                title="Delete exercise"
-              >
-                <Trash2 className="size-4" />
-              </Button>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => router.push("/exercises")}
-                  disabled={saving || deleting}
+          {hasPrs ? (
+            <div className="space-y-4">
+              {prs?.records.map((record) => (
+                <div
+                  key={record.type}
+                  className="flex items-center justify-between border-b pb-2"
                 >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={saving || deleting || !name.trim() || !equipment}
-                >
-                  {saving ? "Saving..." : "Save"}
-                </Button>
-              </div>
+                  <div>
+                    <div className="font-medium">{record.label}</div>
+                    {record.date && (
+                      <div className="text-xs text-muted-foreground">
+                        {new Date(record.date).toLocaleDateString()}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right font-semibold">
+                    {record.type === "MAX_VOLUME" && record.detail
+                      ? `${record.value} ${record.unit} (${pluralizeRepCounts(record.detail)})`
+                      : `${record.value} ${record.unit}`}
+                  </div>
+                </div>
+              ))}
+              {prs?.reps_per_weight.length ? (
+                <div>
+                  <div className="mb-2 font-medium">Most reps per weight</div>
+                  <div className="space-y-1">
+                    {prs.reps_per_weight.map((item) => (
+                      <div
+                        key={item.weight}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span>{item.weight} kg</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold">
+                            {item.reps} {repUnit(item.reps)}
+                          </span>
+                          {item.date && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(item.date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+              {prs?.duration_per_weight.length ? (
+                <div>
+                  <div className="mb-2 font-medium">
+                    Longest duration per weight
+                  </div>
+                  <div className="space-y-1">
+                    {prs.duration_per_weight.map((item) => (
+                      <div
+                        key={item.weight}
+                        className="flex items-center justify-between text-sm"
+                      >
+                        <span>{item.weight} kg</span>
+                        <span className="flex items-center gap-2">
+                          <span className="font-semibold">
+                            {item.duration} s
+                          </span>
+                          {item.date && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(item.date).toLocaleDateString()}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </form>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No personal records yet — log some workouts to see them here.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

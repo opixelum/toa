@@ -5,7 +5,7 @@ from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
-from . import auth, crud, schemas
+from . import auth, crud, prs, schemas, volume
 from .database import engine, get_db
 from .models import Base, User
 
@@ -344,6 +344,18 @@ def delete_workout(workout_id: int, db: DbSession):
         )
 
 
+@app.get("/workouts/{workout_id}/volume", response_model=schemas.WorkoutVolumeRead)
+def read_workout_volume(workout_id: int, db: DbSession):
+    workout = crud.get_workout(db, workout_id)
+    if not workout:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Workout not found"
+        )
+    return schemas.WorkoutVolumeRead(
+        workout_id=workout.id, total_volume=volume.compute_workout_volume(workout)
+    )
+
+
 # --- Exercises ---
 
 
@@ -410,6 +422,17 @@ def delete_exercise(exercise_id: int, db: DbSession):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found"
         )
+
+
+@app.get("/exercises/{exercise_id}/prs", response_model=schemas.ExercisePRsRead)
+def read_exercise_prs(exercise_id: int, db: DbSession):
+    exercise = crud.get_exercise(db, exercise_id)
+    if not exercise:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Exercise not found"
+        )
+    bodyweight = exercise.user.bodyweight if exercise.user else None
+    return prs.compute_exercise_prs(exercise, bodyweight)
 
 
 # --- WorkoutExercises ---
@@ -578,8 +601,13 @@ def create_rep_set(rep_set: schemas.RepSetCreate, db: DbSession):
 
 
 @app.get("/rep_sets", response_model=list[schemas.RepSetRead])
-def read_rep_sets(db: DbSession, skip: int = 0, limit: int = 100):
-    return crud.get_rep_sets(db, skip=skip, limit=limit)
+def read_rep_sets(
+    db: DbSession,
+    skip: int = 0,
+    limit: int = 100,
+    workout_id: int | None = None,
+):
+    return crud.get_rep_sets(db, skip=skip, limit=limit, workout_id=workout_id)
 
 
 @app.get("/rep_sets/{rep_set_id}", response_model=schemas.RepSetRead)
@@ -641,8 +669,13 @@ def create_duration_set(duration_set: schemas.DurationSetCreate, db: DbSession):
 
 
 @app.get("/duration_sets", response_model=list[schemas.DurationSetRead])
-def read_duration_sets(db: DbSession, skip: int = 0, limit: int = 100):
-    return crud.get_duration_sets(db, skip=skip, limit=limit)
+def read_duration_sets(
+    db: DbSession,
+    skip: int = 0,
+    limit: int = 100,
+    workout_id: int | None = None,
+):
+    return crud.get_duration_sets(db, skip=skip, limit=limit, workout_id=workout_id)
 
 
 @app.get("/duration_sets/{duration_set_id}", response_model=schemas.DurationSetRead)

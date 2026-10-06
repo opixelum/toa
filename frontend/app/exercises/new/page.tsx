@@ -54,7 +54,7 @@ export default function NewExercisePage() {
     <div className="container mx-auto p-6">
       <Card className="max-w-2xl mx-auto">
         <CardHeader>
-          <CardTitle>New Exercise</CardTitle>
+          <CardTitle>Create Exercise</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -206,6 +206,7 @@ def create_workout(
         note=workout.note,
         rpe=workout.rpe,
         mesocycle_id=workout.mesocycle_id,
+        source_workout_id=workout.source_workout_id,
     )
     db.add(db_workout)
     db.commit()
@@ -472,19 +473,20 @@ def delete_set(db: Session, set_id: int) -> bool:
 
 
 def get_rep_set(db: Session, rep_set_id: int) -> models.RepSet | None:
-    rep_set = (
-        db.query(models.RepSet)
-        .filter((models.RepSet.id == rep_set_id) | (models.RepSet.set_id == rep_set_id))
-        .first()
-    )
-    return rep_set
+    return db.query(models.RepSet).filter(models.RepSet.id == rep_set_id).first()
 
 
-def get_rep_sets(db: Session, skip: int = 0, limit: int = 100) -> list[models.RepSet]:
+def get_rep_sets(
+    db: Session,
+    skip: int = 0,
+    limit: int = 100,
+    workout_id: int | None = None,
+) -> list[models.RepSet]:
+    query = db.query(models.RepSet).join(models.RepSet.set_)
+    if workout_id is not None:
+        query = query.filter(models.Set.workout_id == workout_id)
     return (
-        db.query(models.RepSet)
-        .join(models.RepSet.set_)
-        .order_by(models.Set.position, models.Set.id)
+        query.order_by(models.Set.position, models.Set.id)
         .offset(skip)
         .limit(limit)
         .all()
@@ -580,21 +582,22 @@ def delete_rep_set(db: Session, rep_set_id: int) -> bool:
 def get_duration_set(db: Session, duration_set_id: int) -> models.DurationSet | None:
     return (
         db.query(models.DurationSet)
-        .filter(
-            (models.DurationSet.id == duration_set_id)
-            | (models.DurationSet.set_id == duration_set_id)
-        )
+        .filter(models.DurationSet.id == duration_set_id)
         .first()
     )
 
 
 def get_duration_sets(
-    db: Session, skip: int = 0, limit: int = 100
+    db: Session,
+    skip: int = 0,
+    limit: int = 100,
+    workout_id: int | None = None,
 ) -> list[models.DurationSet]:
+    query = db.query(models.DurationSet).join(models.DurationSet.set_)
+    if workout_id is not None:
+        query = query.filter(models.Set.workout_id == workout_id)
     return (
-        db.query(models.DurationSet)
-        .join(models.DurationSet.set_)
-        .order_by(models.Set.position, models.Set.id)
+        query.order_by(models.Set.position, models.Set.id)
         .offset(skip)
         .limit(limit)
         .all()

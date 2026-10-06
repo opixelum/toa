@@ -120,7 +120,7 @@ export function ExerciseSearchDialog({
                 className="gap-1.5"
                 onClick={() => setCreateModalOpen(true)}
               >
-                New exercise
+                Create exercise
               </Button>
             </div>
             <DialogDescription>
@@ -156,7 +156,7 @@ export function ExerciseSearchDialog({
                   }}
                 >
                   <Plus className="size-4 mr-1" />
-                  Create &ldquo;{searchQuery || "new exercise"}&rdquo;
+                  {searchQuery ? `Create "${searchQuery}"` : "Create Exercise"}
                 </Button>
               </div>
             ) : (
@@ -205,7 +205,7 @@ export function ExerciseSearchDialog({
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Create New Exercise</DialogTitle>
+            <DialogTitle>Create Exercise</DialogTitle>
             <DialogDescription>
               Add a new exercise to your library.
             </DialogDescription>
