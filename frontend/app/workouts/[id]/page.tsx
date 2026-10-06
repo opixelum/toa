@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { PlannedWorkoutActions } from "@/components/planned-workout-actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -45,7 +45,9 @@ export default function WorkoutDetailPage({
   const router = useRouter();
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [exercises, setExercises] = useState<Exercise[]>([]);
-  const [workoutExercises, setWorkoutExercises] = useState<WorkoutExercise[]>([]);
+  const [workoutExercises, setWorkoutExercises] = useState<WorkoutExercise[]>(
+    [],
+  );
   const [repSets, setRepSets] = useState<RepSet[]>([]);
   const [durationSets, setDurationSets] = useState<DurationSet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,14 +58,19 @@ export default function WorkoutDetailPage({
         const { id } = await params;
         const workoutId = Number.parseInt(id, 10);
 
-        const [workoutData, exercisesData, workoutExercisesData, repSetsData, durationSetsData] =
-          await Promise.all([
-            api.getWorkout(workoutId),
-            api.getExercises(),
-            api.getWorkoutExercises(workoutId),
-            api.getRepSets(),
-            api.getDurationSets(),
-          ]);
+        const [
+          workoutData,
+          exercisesData,
+          workoutExercisesData,
+          repSetsData,
+          durationSetsData,
+        ] = await Promise.all([
+          api.getWorkout(workoutId),
+          api.getExercises(),
+          api.getWorkoutExercises(workoutId),
+          api.getRepSets(workoutId),
+          api.getDurationSets(workoutId),
+        ]);
 
         if (!workoutData) {
           router.push("/workouts");
@@ -99,6 +106,21 @@ export default function WorkoutDetailPage({
   );
 
   const exerciseSets = new Map<number, (RepSet | DurationSet)[]>();
+  for (const workoutExercise of [...workoutExercises].sort(
+    (a, b) => a.position - b.position,
+  )) {
+    const hasLoggedSets =
+      workoutRepSets.some(
+        (set) => set.exercise_id === workoutExercise.exercise_id,
+      ) ||
+      workoutDurationSets.some(
+        (set) => set.exercise_id === workoutExercise.exercise_id,
+      );
+    if (!workout.planned && !hasLoggedSets) continue;
+    if (!exerciseSets.has(workoutExercise.exercise_id)) {
+      exerciseSets.set(workoutExercise.exercise_id, []);
+    }
+  }
   const orderedSets = [...workoutRepSets, ...workoutDurationSets].sort(
     (a, b) => a.position - b.position,
   );
@@ -189,57 +211,65 @@ export default function WorkoutDetailPage({
                       ) : null;
                     })()}
 
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Set</TableHead>
-                          <TableHead>Type</TableHead>
-                          <TableHead>Weight ({weightLabel})</TableHead>
-                          {isRepExercise && <TableHead>Reps</TableHead>}
-                          {!isRepExercise && (
-                            <TableHead>Duration (s)</TableHead>
-                          )}
-                          <TableHead>RPE</TableHead>
-                          <TableHead>Rest (s)</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {sets.map((set, index) => {
-                          const repSet =
-                            isRepExercise && "reps" in set ? set : null;
+                    {sets.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        No sets completed for this exercise.
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Set</TableHead>
+                            <TableHead>Type</TableHead>
+                            <TableHead>Weight ({weightLabel})</TableHead>
+                            {isRepExercise && <TableHead>Reps</TableHead>}
+                            {!isRepExercise && (
+                              <TableHead>Duration (s)</TableHead>
+                            )}
+                            <TableHead>RPE</TableHead>
+                            <TableHead>Rest (s)</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sets.map((set, index) => {
+                            const repSet =
+                              isRepExercise && "reps" in set ? set : null;
 
-                          return (
-                            <TableRow key={set.id}>
-                              <TableCell>{index + 1}</TableCell>
-                              <TableCell>
-                                <span
-                                  className={cn(
-                                    "inline-block px-2 py-0.5 rounded text-xs font-semibold border",
-                                    SET_TYPE_COLORS[set.type_] ||
-                                      "bg-muted text-muted-foreground",
-                                  )}
-                                >
-                                  {set.type_}
-                                </span>
-                              </TableCell>
-                              <TableCell>{set.weight ?? 0}</TableCell>
-                              {isRepExercise && (
+                            return (
+                              <TableRow key={set.id}>
+                                <TableCell>{index + 1}</TableCell>
                                 <TableCell>
-                                  {repSet ? (repSet.reps ?? 0) : 0}
+                                  <span
+                                    className={cn(
+                                      "inline-block px-2 py-0.5 rounded text-xs font-semibold border",
+                                      SET_TYPE_COLORS[set.type_] ||
+                                        "bg-muted text-muted-foreground",
+                                    )}
+                                  >
+                                    {set.type_}
+                                  </span>
                                 </TableCell>
-                              )}
-                              {!isRepExercise && (
-                                <TableCell>
-                                  {"duration" in set ? (set.duration ?? 0) : 0}
-                                </TableCell>
-                              )}
-                              <TableCell>{set.rpe ?? 0}</TableCell>
-                              <TableCell>{set.rest ?? 0}</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                      </TableBody>
-                    </Table>
+                                <TableCell>{set.weight ?? 0}</TableCell>
+                                {isRepExercise && (
+                                  <TableCell>
+                                    {repSet ? (repSet.reps ?? 0) : 0}
+                                  </TableCell>
+                                )}
+                                {!isRepExercise && (
+                                  <TableCell>
+                                    {"duration" in set
+                                      ? (set.duration ?? 0)
+                                      : 0}
+                                  </TableCell>
+                                )}
+                                <TableCell>{set.rpe ?? 0}</TableCell>
+                                <TableCell>{set.rest ?? 0}</TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
                   </div>
                 );
               })

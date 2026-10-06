@@ -131,7 +131,7 @@ export const api = {
 
   // Workouts
   getWorkouts: (userId: number = DEFAULT_USER_ID) =>
-    fetchAPI(`/workouts?user_id=${userId}`),
+    fetchAPI(`/workouts?user_id=${userId}&limit=1000`),
 
   getWorkout: (workoutId: number) => fetchAPI(`/workouts/${workoutId}`),
 
@@ -189,9 +189,17 @@ export const api = {
     return fetchAPI(`/sets?${params.toString()}`);
   },
 
-  getRepSets: () => fetchAPI("/rep_sets"),
+  getRepSets: (workoutId?: number) => {
+    const params = new URLSearchParams({ limit: "1000" });
+    if (workoutId !== undefined) params.set("workout_id", workoutId.toString());
+    return fetchAPI(`/rep_sets?${params.toString()}`);
+  },
 
-  getDurationSets: () => fetchAPI("/duration_sets"),
+  getDurationSets: (workoutId?: number) => {
+    const params = new URLSearchParams({ limit: "1000" });
+    if (workoutId !== undefined) params.set("workout_id", workoutId.toString());
+    return fetchAPI(`/duration_sets?${params.toString()}`);
+  },
 
   // Create rep/duration sets
   createRepSet: (data: Omit<RepSet, "id" | "set_id">) =>
@@ -229,8 +237,14 @@ export const api = {
     }),
 
   // WorkoutExercises
-  getWorkoutExercises: (workoutId: number) =>
-    fetchAPI(`/workout_exercises?workout_id=${workoutId}`),
+  getWorkoutExercises: (workoutId?: number) => {
+    const params = new URLSearchParams({ limit: "1000" });
+    if (workoutId !== undefined) {
+      params.set("workout_id", workoutId.toString());
+    }
+    const query = params.toString();
+    return fetchAPI(`/workout_exercises${query ? `?${query}` : ""}`);
+  },
 
   createWorkoutExercise: (data: Omit<WorkoutExercise, "id">) =>
     fetchAPI("/workout_exercises", {
