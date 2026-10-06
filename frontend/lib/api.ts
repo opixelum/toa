@@ -26,6 +26,12 @@ export interface Workout {
   rpe?: number | null;
   creation_date: string;
   mesocycle_id: number | null;
+  source_workout_id?: number | null;
+}
+
+export interface WorkoutVolume {
+  workout_id: number;
+  total_volume: number;
 }
 
 export interface Exercise {
@@ -143,6 +149,9 @@ export const api = {
     fetchAPI(`/workouts?user_id=${userId}&limit=1000`),
 
   getWorkout: (workoutId: number) => fetchAPI(`/workouts/${workoutId}`),
+
+  getWorkoutVolume: (workoutId: number): Promise<WorkoutVolume> =>
+    fetchAPI(`/workouts/${workoutId}/volume`),
 
   createWorkout: (data: WorkoutInput) =>
     fetchAPI("/workouts", {

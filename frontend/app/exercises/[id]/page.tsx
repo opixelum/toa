@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type Exercise, type ExercisePRs } from "@/lib/api";
+import { pluralizeRepCounts, repUnit } from "@/lib/rep-format";
 
 export default function ExercisePage({
   params,
@@ -106,7 +107,7 @@ export default function ExercisePage({
                   </div>
                   <div className="text-right font-semibold">
                     {record.type === "MAX_VOLUME" && record.detail
-                      ? `${record.value} ${record.unit} (${record.detail})`
+                      ? `${record.value} ${record.unit} (${pluralizeRepCounts(record.detail)})`
                       : `${record.value} ${record.unit}`}
                   </div>
                 </div>
@@ -123,7 +124,7 @@ export default function ExercisePage({
                         <span>{item.weight} kg</span>
                         <span className="flex items-center gap-2">
                           <span className="font-semibold">
-                            {item.reps} reps
+                            {item.reps} {repUnit(item.reps)}
                           </span>
                           {item.date && (
                             <span className="text-xs text-muted-foreground">

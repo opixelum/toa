@@ -53,7 +53,7 @@ export default function ExercisesPage() {
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold">Exercises</h2>
         <Link href="/exercises/new">
-          <Button>New exercise</Button>
+          <Button>Create exercise</Button>
         </Link>
       </div>
       <div className="max-w-md">

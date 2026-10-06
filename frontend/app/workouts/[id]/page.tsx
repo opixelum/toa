@@ -22,6 +22,10 @@ import {
   type Workout,
   type WorkoutExercise,
 } from "@/lib/api";
+import {
+  getDescendedPerformedWorkouts,
+  getHeaviestTotalVolume,
+} from "@/lib/workout-volume";
 import { cn } from "@/lib/utils";
 
 const SET_TYPE_COLORS: Record<string, string> = {
@@ -50,6 +54,10 @@ export default function WorkoutDetailPage({
   );
   const [repSets, setRepSets] = useState<RepSet[]>([]);
   const [durationSets, setDurationSets] = useState<DurationSet[]>([]);
+  const [workoutVolume, setWorkoutVolume] = useState<number | null>(null);
+  const [heaviestTotalVolume, setHeaviestTotalVolume] = useState<number | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -82,6 +90,34 @@ export default function WorkoutDetailPage({
         setWorkoutExercises(workoutExercisesData);
         setRepSets(repSetsData);
         setDurationSets(durationSetsData);
+
+        if (workoutData.planned) {
+          const [plannedVolume, allWorkouts]: [
+            { workout_id: number; total_volume: number },
+            Workout[],
+          ] = await Promise.all([
+            api.getWorkoutVolume(workoutData.id),
+            api.getWorkouts(),
+          ]);
+          const descendedWorkouts = getDescendedPerformedWorkouts(
+            workoutData.id,
+            allWorkouts,
+          );
+          const descendedVolumes = await Promise.all(
+            descendedWorkouts.map((descendedWorkout) =>
+              api.getWorkoutVolume(descendedWorkout.id),
+            ),
+          );
+          setWorkoutVolume(plannedVolume.total_volume);
+          setHeaviestTotalVolume(
+            getHeaviestTotalVolume(
+              descendedVolumes.map((volume) => volume.total_volume),
+            ),
+          );
+        } else {
+          const volume = await api.getWorkoutVolume(workoutData.id);
+          setWorkoutVolume(volume.total_volume);
+        }
       } catch (error) {
         console.error("Failed to load data:", error);
         router.push("/workouts");
@@ -161,6 +197,31 @@ export default function WorkoutDetailPage({
                 timeStyle: "short",
               }).format(new Date(workout.creation_date))}
             </p>
+            {workoutVolume !== null && (
+              <>
+                <p>
+                  <strong>
+                    {workout.planned
+                      ? "Planned total volume:"
+                      : "Total volume:"}
+                  </strong>{" "}
+                  {new Intl.NumberFormat(undefined, {
+                    maximumFractionDigits: 2,
+                  }).format(workoutVolume)}{" "}
+                  kg
+                </p>
+                {workout.planned && (
+                  <p>
+                    <strong>Heaviest total volume:</strong>{" "}
+                    {heaviestTotalVolume === null
+                      ? "—"
+                      : `${new Intl.NumberFormat(undefined, {
+                          maximumFractionDigits: 2,
+                        }).format(heaviestTotalVolume)} kg`}
+                  </p>
+                )}
+              </>
+            )}
             {workout.rpe && (
               <p>
                 <strong>RPE:</strong> {workout.rpe}
