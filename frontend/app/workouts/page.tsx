@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { NewWorkoutButton } from "@/components/new-workout-button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -32,22 +32,32 @@ export default function WorkoutsPage() {
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [repSets, setRepSets] = useState<RepSet[]>([]);
   const [durationSets, setDurationSets] = useState<DurationSet[]>([]);
+  const [workoutExercises, setWorkoutExercises] = useState<
+    { workout_id: number; exercise_id: number; position: number }[]
+  >([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [workoutsData, exercisesData, repSetsData, durationSetsData] =
-          await Promise.all([
-            api.getWorkouts(),
-            api.getExercises(),
-            api.getRepSets(),
-            api.getDurationSets(),
-          ]);
+        const [
+          workoutsData,
+          exercisesData,
+          repSetsData,
+          durationSetsData,
+          workoutExercisesData,
+        ] = await Promise.all([
+          api.getWorkouts(),
+          api.getExercises(),
+          api.getRepSets(),
+          api.getDurationSets(),
+          api.getWorkoutExercises(),
+        ]);
         setWorkouts(workoutsData);
         setExercises(exercisesData);
         setRepSets(repSetsData);
         setDurationSets(durationSetsData);
+        setWorkoutExercises(workoutExercisesData);
       } catch (error) {
         console.error("Failed to load data:", error);
       } finally {
@@ -103,6 +113,9 @@ export default function WorkoutsPage() {
 
               // Get unique exercise IDs
               const exerciseIds = new Set([
+                ...workoutExercises
+                  .filter((item) => item.workout_id === workout.id)
+                  .map((item) => item.exercise_id),
                 ...workoutRepSets.map((s) => s.exercise_id),
                 ...workoutDurationSets.map((s) => s.exercise_id),
               ]);
@@ -171,6 +184,18 @@ export default function WorkoutsPage() {
 
               // Get unique exercise IDs
               const exerciseIds = new Set([
+                ...workoutExercises
+                  .filter(
+                    (item) =>
+                      item.workout_id === workout.id &&
+                      getExerciseSetCount(
+                        workout.id,
+                        item.exercise_id,
+                        repSets,
+                        durationSets,
+                      ) > 0,
+                  )
+                  .map((item) => item.exercise_id),
                 ...workoutRepSets.map((s) => s.exercise_id),
                 ...workoutDurationSets.map((s) => s.exercise_id),
               ]);

@@ -85,9 +85,19 @@ class Workout(Base):
     mesocycle_id = Column(
         Integer, ForeignKey("mesocycles.id", ondelete="SET NULL"), nullable=True
     )
+    source_workout_id = Column(
+        Integer, ForeignKey("workouts.id", ondelete="SET NULL"), nullable=True
+    )
 
     user = relationship("User", back_populates="workouts")
     mesocycle = relationship("Mesocycle", back_populates="workouts")
+    source_workout = relationship(
+        "Workout",
+        remote_side=[id],
+        back_populates="derived_workouts",
+        foreign_keys=[source_workout_id],
+    )
+    derived_workouts = relationship("Workout", back_populates="source_workout")
     sets = relationship("Set", back_populates="workout", cascade="all, delete-orphan")
     workout_exercises = relationship(
         "WorkoutExercise", back_populates="workout", cascade="all, delete-orphan"
