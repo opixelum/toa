@@ -130,6 +130,7 @@ class WorkoutBase(BaseModel):
 class WorkoutCreate(WorkoutBase):
     user_id: int
     mesocycle_id: int | None = None
+    source_workout_id: int | None = None
 
 
 class WorkoutUpdate(BaseModel):
@@ -139,12 +140,14 @@ class WorkoutUpdate(BaseModel):
     note: str | None = Field(default=None, max_length=2048)
     rpe: float | None = Field(default=None, ge=1.0, le=10.0)
     mesocycle_id: int | None = None
+    source_workout_id: int | None = None
 
 
 class WorkoutRead(WorkoutBase):
     id: int
     user_id: int
     mesocycle_id: int | None = None
+    source_workout_id: int | None = None
     creation_date: datetime
 
     model_config = ConfigDict(from_attributes=True)
