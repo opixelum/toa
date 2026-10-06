@@ -1,4 +1,12 @@
-const API_BASE_URL = "https://toa-5gzn.onrender.com";
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(
+  /\/+$/,
+  "",
+);
+export const API_BASE_URL =
+  configuredApiBaseUrl ||
+  (process.env.NODE_ENV === "development"
+    ? "http://localhost:8000"
+    : "https://toa-5gzn.onrender.com");
 
 const DEFAULT_USER_ID = 1;
 
@@ -72,6 +80,7 @@ export interface WorkoutExercise {
 
 export interface Set {
   id: number;
+  set_id?: number;
   workout_id: number;
   exercise_id: number;
   position: number;

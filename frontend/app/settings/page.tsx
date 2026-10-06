@@ -1,44 +1,28 @@
 "use client";
 
 import { Check, LogOut } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
-import { api, type User } from "@/lib/api";
+import { api } from "@/lib/api";
 
 export default function SettingsPage() {
-  const [user, setUser] = useState<User | null>(null);
-  const [email, setEmail] = useState("");
-  const [bodyweight, setBodyweight] = useState("");
-  const [loading, setLoading] = useState(true);
+  const { user, logout } = useAuth();
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [bodyweight, setBodyweight] = useState(
+    user?.bodyweight == null ? "" : String(user.bodyweight),
+  );
   const [saving, setSaving] = useState(false);
   const [updated, setUpdated] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { logout } = useAuth();
-
-  useEffect(() => {
-    async function load() {
-      try {
-        const data = await api.getUser();
-        setUser(data);
-        setEmail(data.email);
-        setBodyweight(data.bodyweight === null ? "" : String(data.bodyweight));
-      } catch (error) {
-        console.error("Failed to load user", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
 
   const hasChanges =
     user !== null &&
     (email !== user.email ||
-      bodyweight !== (user.bodyweight === null ? "" : String(user.bodyweight)));
+      bodyweight !== (user.bodyweight == null ? "" : String(user.bodyweight)));
 
   async function handleUpdateAccount(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,7 +35,6 @@ export default function SettingsPage() {
         email,
         bodyweight: bodyweight === "" ? null : Number(bodyweight),
       });
-      setUser(updatedUser);
       setEmail(updatedUser.email);
       setBodyweight(
         updatedUser.bodyweight === null ? "" : String(updatedUser.bodyweight),
@@ -65,7 +48,6 @@ export default function SettingsPage() {
     }
   }
 
-  if (loading) return <div className="container mx-auto p-6">Loading...</div>;
   if (!user)
     return (
       <div className="container mx-auto p-6">Unable to load settings.</div>
