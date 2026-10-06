@@ -40,6 +40,7 @@ export interface PersonalRecord {
   value: number;
   unit: string;
   date: string | null;
+  detail?: string | null;
 }
 
 export interface RepsAtWeight {
@@ -52,6 +53,13 @@ export interface ExercisePRs {
   exercise_id: number;
   records: PersonalRecord[];
   reps_per_weight: RepsAtWeight[];
+  duration_per_weight: DurationAtWeight[];
+}
+
+export interface DurationAtWeight {
+  weight: number;
+  duration: number;
+  date: string | null;
 }
 
 export interface WorkoutExercise {

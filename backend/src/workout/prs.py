@@ -17,9 +17,10 @@ def _make_record(
     value: float,
     unit: str,
     date: datetime | None,
+    detail: str | None = None,
 ) -> schemas.PersonalRecordRead:
     return schemas.PersonalRecordRead(
-        type=type_, label=label, value=value, unit=unit, date=date
+        type=type_, label=label, value=value, unit=unit, date=date, detail=detail
     )
 
 
@@ -33,7 +34,8 @@ def compute_exercise_prs(
     from the exercise's existing sets — nothing is stored.
     """
     records: list[schemas.PersonalRecordRead] = []
-    sets = list(exercise.sets)
+    # Planned workouts contain set templates, not completed training history.
+    sets = [s for s in exercise.sets if s.workout is not None and not s.workout.planned]
 
     rep_sets = [s for s in sets if s.rep_set is not None and s.rep_set.reps is not None]
     duration_sets = [s for s in sets if s.duration_set is not None]
@@ -42,15 +44,80 @@ def compute_exercise_prs(
     is_assisted = exercise.equipment == "ASSISTED_BODYWEIGHT"
     is_bodyweight = exercise.equipment == "BODYWEIGHT"
 
-    # --- Duration-based exercises: longest duration only ---
+    # --- Duration-based exercises: longest duration and longest per weight ---
     if is_duration:
         best: tuple[float, datetime | None] | None = None
+        durations_by_weight: dict[float, tuple[int, datetime | None]] = {}
+        weighted_duration_sets = [
+            s for s in duration_sets if s.weight is not None and s.weight > 0
+        ]
         for s in duration_sets:
             duration = s.duration_set.duration
             if duration is None or duration <= 0:
                 continue
             if best is None or duration > best[0]:
                 best = (float(duration), _workout_date(s))
+            weight = s.weight if s.weight is not None else 0.0
+            current = durations_by_weight.get(weight)
+            if current is None or duration > current[0]:
+                durations_by_weight[weight] = (duration, _workout_date(s))
+
+        if is_bodyweight:
+            if weighted_duration_sets:
+                s = max(weighted_duration_sets, key=lambda item: item.weight)
+                records.append(
+                    _make_record(
+                        "ADDITIONAL_WEIGHT",
+                        "Additional weight",
+                        s.weight,
+                        "kg",
+                        _workout_date(s),
+                    )
+                )
+            if bodyweight is not None:
+                valid_sets = [
+                    s
+                    for s in duration_sets
+                    if s.duration_set.duration is not None
+                    and s.duration_set.duration > 0
+                ]
+                if valid_sets:
+                    s = max(
+                        valid_sets,
+                        key=lambda item: bodyweight + (item.weight or 0.0),
+                    )
+                    records.append(
+                        _make_record(
+                            "TOTAL_WEIGHT",
+                            "Total weight (bodyweight + added)",
+                            bodyweight + (s.weight or 0.0),
+                            "kg",
+                            _workout_date(s),
+                        )
+                    )
+        elif is_assisted:
+            if weighted_duration_sets:
+                s = min(weighted_duration_sets, key=lambda item: item.weight)
+                records.append(
+                    _make_record(
+                        "HEAVIEST_WEIGHT",
+                        "Least assistance",
+                        s.weight,
+                        "kg",
+                        _workout_date(s),
+                    )
+                )
+        elif weighted_duration_sets:
+            s = max(weighted_duration_sets, key=lambda item: item.weight)
+            records.append(
+                _make_record(
+                    "HEAVIEST_WEIGHT",
+                    "Heaviest weight held",
+                    s.weight,
+                    "kg",
+                    _workout_date(s),
+                )
+            )
         if best is not None:
             records.append(
                 _make_record(
@@ -58,7 +125,15 @@ def compute_exercise_prs(
                 )
             )
         return schemas.ExercisePRsRead(
-            exercise_id=exercise.id, records=records, reps_per_weight=[]
+            exercise_id=exercise.id,
+            records=records,
+            reps_per_weight=[],
+            duration_per_weight=[
+                schemas.DurationAtWeightRead(
+                    weight=weight, duration=duration, date=date
+                )
+                for weight, (duration, date) in sorted(durations_by_weight.items())
+            ],
         )
 
     # --- Rep-based exercises ---
@@ -101,7 +176,7 @@ def compute_exercise_prs(
     elif weighted:
         value, date = max(weighted, key=lambda item: item[0])
         records.append(
-            _make_record("HEAVIEST_WEIGHT", "Heaviest weight", value, "kg", date)
+            _make_record("HEAVIEST_WEIGHT", "Heaviest weight lifted", value, "kg", date)
         )
 
     # Estimated 1RM (Epley); skipped for assisted exercises (inverted logic)
@@ -119,7 +194,10 @@ def compute_exercise_prs(
                 load = bodyweight
             else:
                 continue
-            est = load * (1 + reps / 30.0) if reps > 1 else load
+            rpe = s.rpe if s.rpe is not None else 10.0
+            reps_in_reserve = max(0.0, 10.0 - rpe)
+            effective_reps = reps + reps_in_reserve
+            est = load * (1 + effective_reps / 30.0) if effective_reps > 1 else load
             estimates.append((est, _workout_date(s)))
         if estimates:
             value, date = max(estimates, key=lambda item: item[0])
@@ -145,24 +223,32 @@ def compute_exercise_prs(
     ]
 
     # Most volume in a single set
-    volumes: list[tuple[float, datetime | None]] = []
+    volumes: list[tuple[float, int, float, datetime | None]] = []
     for s in rep_sets:
         reps = s.rep_set.reps
         if reps is None or reps <= 0:
             continue
         if is_bodyweight and bodyweight is not None:
             load = bodyweight + (s.weight or 0.0)
-            volumes.append((load * reps, _workout_date(s)))
+            volumes.append((load * reps, reps, load, _workout_date(s)))
         elif s.weight is not None and s.weight > 0:
-            volumes.append((s.weight * reps, _workout_date(s)))
+            volumes.append((s.weight * reps, reps, s.weight, _workout_date(s)))
     if volumes:
-        value, date = max(volumes, key=lambda item: item[0])
+        value, reps, weight, date = max(volumes, key=lambda item: item[0])
         records.append(
             _make_record(
-                "MAX_VOLUME", "Most volume (single set)", value, "kg·reps", date
+                "MAX_VOLUME",
+                "Most volume (single set)",
+                value,
+                "kg",
+                date,
+                detail=f"{reps} reps x {weight:g} kg",
             )
         )
 
     return schemas.ExercisePRsRead(
-        exercise_id=exercise.id, records=records, reps_per_weight=reps_per_weight
+        exercise_id=exercise.id,
+        records=records,
+        reps_per_weight=reps_per_weight,
+        duration_per_weight=[],
     )

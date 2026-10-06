@@ -321,6 +321,7 @@ class PersonalRecordRead(BaseModel):
     value: float
     unit: str
     date: datetime | None = None
+    detail: str | None = None
 
 
 class RepsAtWeightRead(BaseModel):
@@ -329,7 +330,14 @@ class RepsAtWeightRead(BaseModel):
     date: datetime | None = None
 
 
+class DurationAtWeightRead(BaseModel):
+    weight: float
+    duration: int
+    date: datetime | None = None
+
+
 class ExercisePRsRead(BaseModel):
     exercise_id: int
     records: list[PersonalRecordRead]
     reps_per_weight: list[RepsAtWeightRead]
+    duration_per_weight: list[DurationAtWeightRead] = Field(default_factory=list)
