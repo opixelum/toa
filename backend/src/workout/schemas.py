@@ -153,6 +153,11 @@ class WorkoutRead(WorkoutBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class WorkoutVolumeRead(BaseModel):
+    workout_id: int
+    total_volume: float
+
+
 # --- Exercise Schemas ---
 
 
