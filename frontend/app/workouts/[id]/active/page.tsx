@@ -54,6 +54,11 @@ interface ExerciseGroup {
   sets: Array<RepSet | DurationSet>;
 }
 
+function getSetKey(set: RepSet | DurationSet): number {
+  // RepSet and DurationSet have separate IDs, while their base set IDs are unique.
+  return set.set_id ?? set.id;
+}
+
 function createExerciseGroupId() {
   return `exercise-group-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
@@ -92,15 +97,16 @@ function getSetTypeDisplay(
   allExerciseSets: (RepSet | DurationSet)[],
   selectedSetTypes: Map<number, string>,
 ): string {
-  const currentType = selectedSetTypes.get(currentSet.id) || currentSet.type_;
+  const currentType =
+    selectedSetTypes.get(getSetKey(currentSet)) || currentSet.type_;
   if (currentType === "WORKSET") {
     let worksetCount = 0;
     for (const s of allExerciseSets) {
-      const type = selectedSetTypes.get(s.id) || s.type_;
+      const type = selectedSetTypes.get(getSetKey(s)) || s.type_;
       if (type === "WORKSET") {
         worksetCount++;
       }
-      if (s.id === currentSet.id) {
+      if (getSetKey(s) === getSetKey(currentSet)) {
         break;
       }
     }
@@ -167,9 +173,11 @@ export default function ActiveWorkoutPage({
   const initialRepSetsRef = useRef<Map<number, RepSet>>(new Map());
   const initialDurationSetsRef = useRef<Map<number, DurationSet>>(new Map());
   const postWorkoutNoteRef = useRef(postWorkoutNote);
-  postWorkoutNoteRef.current = postWorkoutNote;
   const workoutRpeRef = useRef(workoutRpe);
-  workoutRpeRef.current = workoutRpe;
+  useEffect(() => {
+    postWorkoutNoteRef.current = postWorkoutNote;
+    workoutRpeRef.current = workoutRpe;
+  }, [postWorkoutNote, workoutRpe]);
   const pathname = usePathname();
   const isEditMode = pathname.endsWith("/edit");
   const isNewMode = pathname.endsWith("/workouts/new");
@@ -213,8 +221,8 @@ export default function ActiveWorkoutPage({
             api.getWorkout(idNum),
             api.getExercises(),
             api.getWorkoutExercises(idNum),
-            api.getRepSets(),
-            api.getDurationSets(),
+            api.getRepSets(idNum),
+            api.getDurationSets(idNum),
           ]);
 
         const nextRepSets = repSetData.filter(
@@ -253,42 +261,51 @@ export default function ActiveWorkoutPage({
         // Initialize inputs with saved values
         const initialInputs: Record<string, string> = {};
         nextRepSets.forEach((set) => {
+          const setKey = getSetKey(set);
           if (set.weight !== null)
-            initialInputs[`${set.id}-weight`] = String(set.weight);
+            initialInputs[`${setKey}-weight`] = String(set.weight);
           if (set.reps !== null)
-            initialInputs[`${set.id}-reps`] = String(set.reps);
+            initialInputs[`${setKey}-reps`] = String(set.reps);
           if (set.rpe !== null)
-            initialInputs[`${set.id}-rpe`] = String(set.rpe);
+            initialInputs[`${setKey}-rpe`] = String(set.rpe);
         });
         nextDurationSets.forEach((set) => {
+          const setKey = getSetKey(set);
           if (set.weight !== null)
-            initialInputs[`${set.id}-weight`] = String(set.weight);
+            initialInputs[`${setKey}-weight`] = String(set.weight);
           if (set.duration !== null)
-            initialInputs[`${set.id}-duration`] = String(set.duration);
+            initialInputs[`${setKey}-duration`] = String(set.duration);
           if (set.rpe !== null)
-            initialInputs[`${set.id}-rpe`] = String(set.rpe);
+            initialInputs[`${setKey}-rpe`] = String(set.rpe);
         });
         setInputs(initialInputs);
 
         setExerciseGroups(() => {
-          const groups: ExerciseGroup[] = [];
-
           const orderedSets = [...nextRepSets, ...nextDurationSets].sort(
             (a, b) => a.position - b.position,
           );
-
+          const setsByExercise = new Map<number, (RepSet | DurationSet)[]>();
           for (const set of orderedSets) {
-            const lastGroup = groups[groups.length - 1];
-            if (lastGroup && lastGroup.exerciseId === set.exercise_id) {
-              lastGroup.sets.push(set);
-              continue;
-            }
+            const exerciseSets = setsByExercise.get(set.exercise_id) ?? [];
+            exerciseSets.push(set);
+            setsByExercise.set(set.exercise_id, exerciseSets);
+          }
 
-            groups.push({
+          const groups = workoutExercisesData
+            .slice()
+            .sort((a, b) => a.position - b.position)
+            .map((workoutExercise) => ({
               id: createExerciseGroupId(),
-              exerciseId: set.exercise_id,
-              sets: [set],
-            });
+              exerciseId: workoutExercise.exercise_id,
+              sets: setsByExercise.get(workoutExercise.exercise_id) ?? [],
+            }));
+
+          const associatedExerciseIds = new Set(
+            workoutExercisesData.map((item) => item.exercise_id),
+          );
+          for (const [exerciseId, sets] of setsByExercise) {
+            if (associatedExerciseIds.has(exerciseId)) continue;
+            groups.push({ id: createExerciseGroupId(), exerciseId, sets });
           }
 
           return groups;
@@ -434,20 +451,26 @@ export default function ActiveWorkoutPage({
     }));
   };
 
-  const handleDeleteSet = (setId: number) => {
-    setRepSets((prev) => prev.filter((set) => set.id !== setId));
-    setDurationSets((prev) => prev.filter((set) => set.id !== setId));
+  const handleDeleteSet = (setToDelete: RepSet | DurationSet) => {
+    const setKey = getSetKey(setToDelete);
+    if ("reps" in setToDelete) {
+      setRepSets((prev) => prev.filter((set) => set.id !== setToDelete.id));
+    } else {
+      setDurationSets((prev) =>
+        prev.filter((set) => set.id !== setToDelete.id),
+      );
+    }
     setExerciseGroups((prev) =>
       prev
         .map((group) => ({
           ...group,
-          sets: group.sets.filter((set) => set.id !== setId),
+          sets: group.sets.filter((set) => getSetKey(set) !== setKey),
         }))
         .filter((group) => group.sets.length > 0),
     );
     setSetCompletions((prev) => {
       const next = new Map(prev);
-      next.delete(setId);
+      next.delete(setKey);
       return next;
     });
   };
@@ -456,9 +479,26 @@ export default function ActiveWorkoutPage({
     const group = exerciseGroups.find((item) => item.id === groupId);
     if (!group) return;
 
-    const groupSetIds = new Set(group.sets.map((set) => set.id));
-    setRepSets((prev) => prev.filter((set) => !groupSetIds.has(set.id)));
-    setDurationSets((prev) => prev.filter((set) => !groupSetIds.has(set.id)));
+    const repSetIds = new Set(
+      group.sets
+        .filter((set): set is RepSet => "reps" in set)
+        .map((set) => set.id),
+    );
+    const durationSetIds = new Set(
+      group.sets
+        .filter((set): set is DurationSet => "duration" in set)
+        .map((set) => set.id),
+    );
+    const groupSetKeys = new Set(group.sets.map(getSetKey));
+    setRepSets((prev) => prev.filter((set) => !repSetIds.has(set.id)));
+    setDurationSets((prev) =>
+      prev.filter((set) => !durationSetIds.has(set.id)),
+    );
+    setSetCompletions((prev) => {
+      const next = new Map(prev);
+      for (const key of groupSetKeys) next.delete(key);
+      return next;
+    });
     setExerciseGroups((prev) => prev.filter((item) => item.id !== groupId));
     setExerciseNotes((prev) => {
       const next = { ...prev };
@@ -504,14 +544,18 @@ export default function ActiveWorkoutPage({
     const rest = Math.max(0, Number.parseInt(value, 10) || 0);
     const group = exerciseGroups.find((item) => item.id === groupId);
     if (!group) return;
-    const groupSetIds = new Set(group.sets.map((set) => set.id));
+    const groupSetIds = new Set(group.sets.map(getSetKey));
 
     setExerciseRestTimes((prev) => ({ ...prev, [groupId]: rest }));
     setRepSets((prev) =>
-      prev.map((set) => (groupSetIds.has(set.id) ? { ...set, rest } : set)),
+      prev.map((set) =>
+        groupSetIds.has(getSetKey(set)) ? { ...set, rest } : set,
+      ),
     );
     setDurationSets((prev) =>
-      prev.map((set) => (groupSetIds.has(set.id) ? { ...set, rest } : set)),
+      prev.map((set) =>
+        groupSetIds.has(getSetKey(set)) ? { ...set, rest } : set,
+      ),
     );
     setExerciseGroups((prev) =>
       prev.map((item) =>
@@ -588,7 +632,7 @@ export default function ActiveWorkoutPage({
     const positions = new Map<number, number>();
     exerciseGroups.forEach((group, groupIndex) => {
       group.sets.forEach((set, setIndex) => {
-        positions.set(set.id, groupIndex * 1000 + setIndex);
+        positions.set(getSetKey(set), groupIndex * 1000 + setIndex);
       });
     });
 
@@ -604,17 +648,18 @@ export default function ActiveWorkoutPage({
     }
 
     const saveRepSet = (set: RepSet) => {
-      const type_ = selectedSetTypes.get(set.id) ?? set.type_ ?? "WORKSET";
+      const setKey = getSetKey(set);
+      const type_ = selectedSetTypes.get(setKey) ?? set.type_ ?? "WORKSET";
       const payload = {
         workout_id: targetWorkoutId,
         exercise_id: set.exercise_id,
-        position: positions.get(set.id) ?? 0,
+        position: positions.get(setKey) ?? 0,
         type_,
-        weight: toNumberOrNull(inputs[`${set.id}-weight`], set.weight),
-        rpe: toNumberOrNull(inputs[`${set.id}-rpe`], set.rpe),
+        weight: toNumberOrNull(inputs[`${setKey}-weight`], set.weight),
+        rpe: toNumberOrNull(inputs[`${setKey}-rpe`], set.rpe),
         rest: set.rest,
         reps: Math.round(
-          toNumberOrNull(inputs[`${set.id}-reps`], set.reps) ?? 0,
+          toNumberOrNull(inputs[`${setKey}-reps`], set.reps) ?? 0,
         ),
       };
 
@@ -639,17 +684,18 @@ export default function ActiveWorkoutPage({
     };
 
     const saveDurationSet = (set: DurationSet) => {
-      const type_ = selectedSetTypes.get(set.id) ?? set.type_ ?? "WORKSET";
+      const setKey = getSetKey(set);
+      const type_ = selectedSetTypes.get(setKey) ?? set.type_ ?? "WORKSET";
       const payload = {
         workout_id: targetWorkoutId,
         exercise_id: set.exercise_id,
-        position: positions.get(set.id) ?? 0,
+        position: positions.get(setKey) ?? 0,
         type_,
-        weight: toNumberOrNull(inputs[`${set.id}-weight`], set.weight),
-        rpe: toNumberOrNull(inputs[`${set.id}-rpe`], set.rpe),
+        weight: toNumberOrNull(inputs[`${setKey}-weight`], set.weight),
+        rpe: toNumberOrNull(inputs[`${setKey}-rpe`], set.rpe),
         rest: set.rest,
         duration: Math.round(
-          toNumberOrNull(inputs[`${set.id}-duration`], set.duration) ?? 0,
+          toNumberOrNull(inputs[`${setKey}-duration`], set.duration) ?? 0,
         ),
       };
 
@@ -728,27 +774,23 @@ export default function ActiveWorkoutPage({
     }
   };
 
-  const handleSetComplete = (setId: number, restTime: number) => {
-    const currentCompletion = setCompletions.get(setId);
+  const handleSetComplete = (set: RepSet | DurationSet, restTime: number) => {
+    const setKey = getSetKey(set);
+    const currentCompletion = setCompletions.get(setKey);
 
     if (currentCompletion?.completed) {
       setSetCompletions((prev) => {
         const next = new Map(prev);
-        next.delete(setId);
+        next.delete(setKey);
         return next;
       });
       setActiveRestTime(null);
       return;
     }
 
-    const set =
-      repSets.find((item) => item.id === setId) ||
-      durationSets.find((item) => item.id === setId);
-    if (!set) return;
-
     const actualValues: Record<string, string> = {};
     const getValueOrPlaceholder = (key: string, placeholder: string) => {
-      const value = inputs[`${setId}-${key}`] ?? "";
+      const value = inputs[`${setKey}-${key}`] ?? "";
       return value.trim() || placeholder;
     };
 
@@ -779,7 +821,7 @@ export default function ActiveWorkoutPage({
 
     setSetCompletions((prev) => {
       const next = new Map(prev);
-      next.set(setId, {
+      next.set(setKey, {
         completed: true,
         restStartTime: Date.now(),
         actualValues,
@@ -790,7 +832,7 @@ export default function ActiveWorkoutPage({
     setInputs((prev) => {
       const next = { ...prev };
       for (const [key, value] of Object.entries(actualValues)) {
-        next[`${setId}-${key}`] = String(value);
+        next[`${setKey}-${key}`] = String(value);
       }
       return next;
     });
@@ -798,7 +840,7 @@ export default function ActiveWorkoutPage({
     playSetCheckSound();
 
     if (restTime > 0) {
-      setActiveRestTime({ setId, remaining: restTime });
+      setActiveRestTime({ setId: setKey, remaining: restTime });
     }
   };
 
@@ -859,9 +901,11 @@ export default function ActiveWorkoutPage({
                     )
                   }
                 />
-                <div className="text-2xl font-mono">
-                  {formatTime(elapsedTime)}
-                </div>
+                {!isNewMode && (
+                  <div className="text-2xl font-mono">
+                    {formatTime(elapsedTime)}
+                  </div>
+                )}
               </div>
               <Input
                 className="mt-2 mb-3"
@@ -880,16 +924,18 @@ export default function ActiveWorkoutPage({
                 }
               />
               <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 font-medium"
-                  onClick={() => setRestTimerDialogOpen(true)}
-                >
-                  <Timer className="size-4 text-orange-500" />
-                  Rest Timer
-                </Button>
+                {!isNewMode && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 font-medium"
+                    onClick={() => setRestTimerDialogOpen(true)}
+                  >
+                    <Timer className="size-4 text-orange-500" />
+                    Rest Timer
+                  </Button>
+                )}
 
                 {activeRestTime &&
                   activeRestTime.remaining > 0 &&
@@ -1063,18 +1109,19 @@ export default function ActiveWorkoutPage({
                         </TableHeader>
                         <TableBody>
                           {sets.map((set) => {
-                            const completion = setCompletions.get(set.id);
+                            const setKey = getSetKey(set);
+                            const completion = setCompletions.get(setKey);
                             const isCompleted = completion?.completed;
                             const actualValues = completion?.actualValues || {};
                             const selectColor =
                               SET_TYPE_COLORS[
-                                selectedSetTypes.get(set.id) || set.type_
+                                selectedSetTypes.get(setKey) || set.type_
                               ] || "bg-background";
 
                             return (
                               <SwipeableSetRow
-                                key={set.id}
-                                onDelete={() => handleDeleteSet(set.id)}
+                                key={setKey}
+                                onDelete={() => handleDeleteSet(set)}
                                 className={
                                   isCompleted
                                     ? "bg-green-50 dark:bg-green-950/50 dark:text-green-50"
@@ -1084,19 +1131,19 @@ export default function ActiveWorkoutPage({
                                 <TableCell className="p-2 text-center">
                                   <Select
                                     value={
-                                      selectedSetTypes.get(set.id) || set.type_
+                                      selectedSetTypes.get(setKey) || set.type_
                                     }
                                     onValueChange={(selectedType) => {
                                       if (!selectedType) return;
                                       setSelectedSetTypes((prev) => {
                                         const next = new Map(prev);
-                                        next.set(set.id, selectedType);
+                                        next.set(setKey, selectedType);
                                         return next;
                                       });
                                       if (selectedType === "FAILURE") {
                                         setInputs((prev) => ({
                                           ...prev,
-                                          [`${set.id}-rpe`]: "10",
+                                          [`${setKey}-rpe`]: "10",
                                         }));
                                       }
                                     }}
@@ -1135,7 +1182,7 @@ export default function ActiveWorkoutPage({
                                         : actualValues.weight || "0"
                                     }
                                     value={
-                                      inputs[`${set.id}-weight`] ??
+                                      inputs[`${setKey}-weight`] ??
                                       (isCompleted && actualValues.weight
                                         ? String(actualValues.weight)
                                         : set.weight !== null
@@ -1146,7 +1193,7 @@ export default function ActiveWorkoutPage({
                                     onChange={(e) =>
                                       setInputs((prev) => ({
                                         ...prev,
-                                        [`${set.id}-weight`]: e.target.value,
+                                        [`${setKey}-weight`]: e.target.value,
                                       }))
                                     }
                                   />
@@ -1162,7 +1209,7 @@ export default function ActiveWorkoutPage({
                                           : actualValues.reps || "0"
                                       }
                                       value={
-                                        inputs[`${set.id}-reps`] ??
+                                        inputs[`${setKey}-reps`] ??
                                         (isCompleted && actualValues.reps
                                           ? String(actualValues.reps)
                                           : "reps" in set && set.reps !== null
@@ -1174,7 +1221,7 @@ export default function ActiveWorkoutPage({
                                       onChange={(e) =>
                                         setInputs((prev) => ({
                                           ...prev,
-                                          [`${set.id}-reps`]: e.target.value,
+                                          [`${setKey}-reps`]: e.target.value,
                                         }))
                                       }
                                     />
@@ -1188,7 +1235,7 @@ export default function ActiveWorkoutPage({
                                           : actualValues.duration || "0"
                                       }
                                       value={
-                                        inputs[`${set.id}-duration`] ??
+                                        inputs[`${setKey}-duration`] ??
                                         (isCompleted && actualValues.duration
                                           ? String(actualValues.duration)
                                           : "duration" in set &&
@@ -1201,7 +1248,7 @@ export default function ActiveWorkoutPage({
                                       onChange={(e) =>
                                         setInputs((prev) => ({
                                           ...prev,
-                                          [`${set.id}-duration`]:
+                                          [`${setKey}-duration`]:
                                             e.target.value,
                                         }))
                                       }
@@ -1218,7 +1265,7 @@ export default function ActiveWorkoutPage({
                                         : actualValues.rpe || "0"
                                     }
                                     value={
-                                      inputs[`${set.id}-rpe`] ??
+                                      inputs[`${setKey}-rpe`] ??
                                       (isCompleted && actualValues.rpe
                                         ? String(actualValues.rpe)
                                         : set.rpe !== null
@@ -1232,7 +1279,7 @@ export default function ActiveWorkoutPage({
                                     onChange={(e) =>
                                       setInputs((prev) => ({
                                         ...prev,
-                                        [`${set.id}-rpe`]: e.target.value,
+                                        [`${setKey}-rpe`]: e.target.value,
                                       }))
                                     }
                                   />
@@ -1253,7 +1300,7 @@ export default function ActiveWorkoutPage({
                                       )}
                                       onClick={() =>
                                         handleSetComplete(
-                                          set.id,
+                                          set,
                                           exerciseRestTimes[groupId] ??
                                             set.rest,
                                         )
@@ -1333,14 +1380,16 @@ export default function ActiveWorkoutPage({
             }
           />
 
-          <RestTimerDialog
-            open={restTimerDialogOpen}
-            onOpenChange={setRestTimerDialogOpen}
-            activeRemaining={activeRestTime?.remaining ?? null}
-            onStartTimer={handleStartRestTimer}
-            onStopTimer={handleStopRestTimer}
-            onAdjustTimer={handleAdjustRestTimer}
-          />
+          {!isNewMode && (
+            <RestTimerDialog
+              open={restTimerDialogOpen}
+              onOpenChange={setRestTimerDialogOpen}
+              activeRemaining={activeRestTime?.remaining ?? null}
+              onStartTimer={handleStartRestTimer}
+              onStopTimer={handleStopRestTimer}
+              onAdjustTimer={handleAdjustRestTimer}
+            />
+          )}
 
           <Dialog
             open={dialogOpen}
@@ -1434,8 +1483,25 @@ export default function ActiveWorkoutPage({
                           mesocycle_id: workout?.mesocycle_id ?? null,
                         });
 
+                        const completedSets = exerciseGroups
+                          .flatMap((group) => group.sets)
+                          .filter(
+                            (set) =>
+                              setCompletions.get(getSetKey(set))?.completed,
+                          );
+                        const completedSetKeys = new Set(
+                          completedSets.map(getSetKey),
+                        );
+
                         // Save workout exercises with notes
                         for (const [index, group] of exerciseGroups.entries()) {
+                          if (
+                            !group.sets.some((set) =>
+                              completedSetKeys.has(getSetKey(set)),
+                            )
+                          ) {
+                            continue;
+                          }
                           const note =
                             exerciseNotes[group.exerciseId.toString()] || null;
                           await api.createWorkoutExercise({
@@ -1446,19 +1512,23 @@ export default function ActiveWorkoutPage({
                           });
                         }
 
-                        for (const [
-                          setId,
-                          completion,
-                        ] of setCompletions.entries()) {
-                          if (!completion.completed) continue;
+                        const setPositions = new Map<number, number>();
+                        exerciseGroups.forEach((group, groupIndex) => {
+                          group.sets.forEach((set, setIndex) => {
+                            setPositions.set(
+                              getSetKey(set),
+                              groupIndex * 1000 + setIndex,
+                            );
+                          });
+                        });
 
-                          const setObj =
-                            repSets.find((item) => item.id === setId) ||
-                            durationSets.find((item) => item.id === setId);
-                          if (!setObj) continue;
+                        for (const setObj of completedSets) {
+                          const setKey = getSetKey(setObj);
+                          const completion = setCompletions.get(setKey);
+                          if (!completion?.completed) continue;
 
                           const selectedType = (
-                            selectedSetTypes.get(setId) ??
+                            selectedSetTypes.get(setKey) ??
                             setObj.type_ ??
                             "WORKSET"
                           )
@@ -1475,7 +1545,7 @@ export default function ActiveWorkoutPage({
                           const base = {
                             workout_id: newWorkout.id,
                             exercise_id: setObj.exercise_id,
-                            position: setObj.position,
+                            position: setPositions.get(setKey) ?? 0,
                             type_: selectedType,
                             weight: Number.isFinite(numericWeight)
                               ? numericWeight
