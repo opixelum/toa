@@ -251,6 +251,7 @@ class RepSetCreate(RepSetBase):
 
 
 class RepSetUpdate(BaseModel):
+    position: int | None = None
     type_: SetType | None = None
     weight: float | None = None
     rpe: float | None = Field(default=None, ge=1.0, le=10.0)
@@ -288,6 +289,7 @@ class DurationSetCreate(DurationSetBase):
 
 
 class DurationSetUpdate(BaseModel):
+    position: int | None = None
     type_: SetType | None = None
     weight: float | None = None
     rpe: float | None = Field(default=None, ge=1.0, le=10.0)

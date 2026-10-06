@@ -589,8 +589,13 @@ def create_rep_set(rep_set: schemas.RepSetCreate, db: DbSession):
 
 
 @app.get("/rep_sets", response_model=list[schemas.RepSetRead])
-def read_rep_sets(db: DbSession, skip: int = 0, limit: int = 100):
-    return crud.get_rep_sets(db, skip=skip, limit=limit)
+def read_rep_sets(
+    db: DbSession,
+    skip: int = 0,
+    limit: int = 100,
+    workout_id: int | None = None,
+):
+    return crud.get_rep_sets(db, skip=skip, limit=limit, workout_id=workout_id)
 
 
 @app.get("/rep_sets/{rep_set_id}", response_model=schemas.RepSetRead)
@@ -652,8 +657,13 @@ def create_duration_set(duration_set: schemas.DurationSetCreate, db: DbSession):
 
 
 @app.get("/duration_sets", response_model=list[schemas.DurationSetRead])
-def read_duration_sets(db: DbSession, skip: int = 0, limit: int = 100):
-    return crud.get_duration_sets(db, skip=skip, limit=limit)
+def read_duration_sets(
+    db: DbSession,
+    skip: int = 0,
+    limit: int = 100,
+    workout_id: int | None = None,
+):
+    return crud.get_duration_sets(db, skip=skip, limit=limit, workout_id=workout_id)
 
 
 @app.get("/duration_sets/{duration_set_id}", response_model=schemas.DurationSetRead)
